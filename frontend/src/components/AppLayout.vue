@@ -37,8 +37,8 @@ const showIcp = computed(() => {
           <i class="fa-solid fa-arrow-left text-sm"></i>
         </button>
 
-        <div class="w-7 h-7 rounded-lg bg-violet-500 flex items-center justify-center shrink-0">
-          <i class="fa-solid fa-compass text-white text-xs"></i>
+        <div class="w-7 h-7 rounded-lg bg-violet-500 flex items-center justify-center shrink-0 overflow-hidden">
+          <img src="/favicon.ico" class="w-5 h-5 object-contain" alt="Lumen" />
         </div>
         <template v-if="isHome">
           <h1 class="text-sm font-bold text-stone-800 tracking-tight leading-none">拾光</h1>

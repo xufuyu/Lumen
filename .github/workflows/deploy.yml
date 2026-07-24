@@ -369,7 +369,7 @@ jobs:
             echo "✗ nginx 未启动"
             OK=false
           fi
-          [ "$OK" = "false" ] && exit 1
+          if [ "$OK" = "false" ]; then exit 1; fi
           REMOTE
 
       - name: Cleanup SSH key
