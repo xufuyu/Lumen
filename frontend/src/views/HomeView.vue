@@ -194,7 +194,7 @@ onMounted(async () => {
     sessionStorage.setItem('advx-welcomed', '1')
     showToast('info', hasContent.value
       ? '欢迎回来 — 记录任何想到的事，我来帮你整理。'
-      : '欢迎来到 AdventureX — 想到什么就写下来，或者直接问我。')
+      : '欢迎来到拾光 · Lumen — 想到什么就写下来，或者直接问我。')
   }
 })
 </script>

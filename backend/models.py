@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models for the AdventureX data schema."""
+"""SQLAlchemy ORM models for 拾光 · Lumen data schema."""
 
 from datetime import datetime, timezone
 

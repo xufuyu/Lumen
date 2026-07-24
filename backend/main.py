@@ -1,4 +1,4 @@
-"""AdventureX 2026 — 认知与行动辅助  API Server"""
+"""拾光 · Lumen (AdventureX 2026) — API Server"""
 
 import logging
 from contextlib import asynccontextmanager
@@ -37,8 +37,8 @@ async def lifespan(app: FastAPI):
 # ── App ─────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="AdventureX 2026",
-    description="认知与行动辅助 — 为受到抑郁、ADHD、解离等问题影响的人群提供生活辅助",
+    title="拾光 · Lumen",
+    description="拾光 · Lumen — 把碎片记录自动整理成时间线、待办和状态摘要的个人助手，面向需要认知辅助的人群及所有想让生活更有条理的人",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -81,7 +81,7 @@ app.include_router(merge_router)
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "service": "AdventureX 2026"}
+    return {"status": "ok", "service": "拾光 · Lumen"}
 
 
 # ── Main ────────────────────────────────────────────────────────────────────

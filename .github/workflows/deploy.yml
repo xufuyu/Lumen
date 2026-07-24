@@ -232,12 +232,11 @@ jobs:
           fi
 
           sudo tee /etc/nginx/sites-available/lumen >/dev/null <<'NGINX'
-          # HTTP → 强制跳转 HTTPS（仅在有证书时）
+          # HTTP → 强制跳转 HTTPS（仅在有证书时），default_server 避免冲突
           server {
-              listen 80;
-              server_name _;
-              # 用变量控制是否跳转，由 deploy 脚本替换
-              __REDIRECT__
+              listen 80 default_server;
+              server_name guppy.ltd *.guppy.ltd;
+              # __REDIRECT__ 会被脚本替换为 return 301（有证书时）或删除（无证书时）
               location /.well-known/acme-challenge/ { root /var/www/html; }
 
               # 静态资源
@@ -282,8 +281,9 @@ jobs:
             sudo tee -a /etc/nginx/sites-available/lumen >/dev/null <<'NGINXSSL'
 
           server {
-              listen 443 ssl http2;
-              server_name _;
+              listen 443 ssl;
+              http2 on;
+              server_name guppy.ltd *.guppy.ltd;
 
               ssl_certificate     /etc/nginx/ssl/lumen/guppy.ltd_bundle.crt;
               ssl_certificate_key /etc/nginx/ssl/lumen/guppy.ltd.key;
@@ -333,8 +333,8 @@ jobs:
           sudo nginx -t && sudo systemctl restart nginx || { echo "✗ nginx 配置错误"; sudo nginx -t; exit 1; }
 
           sudo systemctl daemon-reload
-          sudo systemctl enable lumen
-          sudo systemctl restart lumen
+          sudo systemctl enable lumen 2>/dev/null || true
+          sudo systemctl restart lumen || { echo "✗ lumen 启动失败"; sudo journalctl -u lumen -n 30 --no-pager; exit 1; }
 
           # 清理临时文件
           rm -rf /tmp/lumen-deploy
@@ -353,7 +353,7 @@ jobs:
             echo "✓ nginx 运行中"
             CURL_OPTS="-sf"
             # 有证书时跳过证书验证（CI 自检 localhost，证书域名不匹配）
-            $HAS_SSL && CURL_OPTS="-sfk"
+            if $HAS_SSL; then CURL_OPTS="-sfk"; fi
             curl $CURL_OPTS https://127.0.0.1:443/api/health 2>/dev/null && echo "" || \
             curl -sf http://127.0.0.1:80/api/health && echo "" || {
               echo "✗ nginx → 后端健康检查失败"

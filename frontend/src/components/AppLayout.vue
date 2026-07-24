@@ -41,8 +41,8 @@ const showIcp = computed(() => {
           <i class="fa-solid fa-compass text-white text-xs"></i>
         </div>
         <template v-if="isHome">
-          <h1 class="text-sm font-bold text-stone-800 tracking-tight leading-none">AdventureX</h1>
-          <span class="hidden sm:inline text-[10px] text-stone-400">认知与行动辅助</span>
+          <h1 class="text-sm font-bold text-stone-800 tracking-tight leading-none">拾光</h1>
+          <span class="hidden sm:inline text-[10px] text-stone-400">Lumen</span>
         </template>
         <template v-else>
           <h1 class="text-sm font-semibold text-stone-700 truncate">{{ currentTitle }}</h1>
