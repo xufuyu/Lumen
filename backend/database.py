@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from sqlalchemy.orm import DeclarativeBase
 
 from config import DATABASE_URL
+from security import validate_table_name
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
         # Migration: add user_id columns if missing
         for table in ["records", "events", "tasks", "contexts", "moods"]:
+            validate_table_name(table)
             try:
                 await conn.execute(text(
                     f"ALTER TABLE {table} ADD COLUMN user_id TEXT NOT NULL DEFAULT 'default'"

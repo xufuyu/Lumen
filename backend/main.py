@@ -4,11 +4,12 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import AUTO_PROCESS, BASE_DIR
 from database import init_db
+from security import SecurityMiddleware
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,13 +44,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow all origins during development
+# Security middleware — rate limiting (must be added first to wrap all requests)
+app.add_middleware(SecurityMiddleware)
+
+# CORS
+import os
+_ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "X-User-ID"],
 )
 
 

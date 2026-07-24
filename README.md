@@ -37,9 +37,12 @@
 - **模糊去重合并** — Levenshtein 匹配 + LLM 语义双保险，避免同一件事被重复登记。中等相似度会**问用户**要不要合并。
 - **同框问答** — 在同一个输入框里，「问一下今晚要做啥」直接切成问答，不用切页面。
 - **多语种支持** — 中文 / English 一键切换，语言偏好保存在本地。
-- **多用户隔离** — 每个唯一标识独立存储数据。不同设备输入相同标识即可共享。
+- **多用户隔离** — 每个唯一标识独立存储数据。切换 ID 时自动合并数据。不同设备输入相同标识即可共享。
 - **PWA 安装** — 支持添加到手机/桌面主屏幕，独立窗口运行，体验接近原生 App。
 - **HTTPS 强制** — 生产环境自动启用 TLS + HSTS，HTTP 自动跳转 HTTPS。
+- **API 限流** — 滑动窗口算法按用户 + 端点限流。AI 端点 5-20/min，写入 20-30/min，读取 120/min。防 Token 盗刷。
+- **SQL 注入防护** — 全局参数化查询 + 动态表名白名单校验。
+- **输入校验** — Pydantic 模型校验 + user_id 格式白名单 + 内容长度上限。
 
 ## 技术栈
 
@@ -62,6 +65,7 @@ adventurex/
 │   ├── config.py            # 配置（中继 URL、DB 路径）
 │   ├── database.py          # SQLAlchemy 异步引擎 + user_id 迁移 + Header 依赖
 │   ├── models.py            # ORM 模型（Record/Event/Task/Context/Mood，均含 user_id）
+│   ├── security.py          # 限流中间件 + SQL 注入防护 + 输入校验
 │   ├── schemas.py           # Pydantic 请求/响应（含 voice_emotion）
 │   ├── services/
 │   │   ├── llm.py           # LLM 调用（含情绪 hint 注入的 5 个 prompt）

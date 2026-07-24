@@ -17,7 +17,11 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
       ...options,
     })
     if (!res.ok) {
-      const err = await res.text()
+      let err: string
+      try { const j = await res.json(); err = j.detail || JSON.stringify(j) } catch { err = await res.text() }
+      if (res.status === 429) {
+        throw new Error(err || '请求过于频繁，请稍后再试。\nThis is a competition demo, rate limited.')
+      }
       throw new Error(err || `HTTP ${res.status}`)
     }
     if (res.status === 204) return undefined as T

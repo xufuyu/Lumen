@@ -8,12 +8,18 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import current_user_id, get_db
+from security import validate_table_name
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/user", tags=["user"])
 
 USER_TABLES = ["records", "events", "tasks", "contexts", "moods"]
+
+
+# Validate table names at import time (fail fast if misconfigured)
+for _t in USER_TABLES:
+    validate_table_name(_t)
 
 
 class MergeRequest(BaseModel):
