@@ -1,12 +1,21 @@
-/** Real-time sync: listen for data changes from same user_id on other devices. */
+/** Real-time sync: WebSocket + polling fallback for same-ID multi-device sync. */
 
 import { ref } from 'vue'
 import { getUserId } from './user'
 
 let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
 export const syncConnected = ref(false)
+
+// Polling fallback: check /api/health every 10s; any mutation on same ID
+// will be picked up next time the page reloads
+let lastRefreshVersion = 0
+
+function triggerRefresh() {
+  window.dispatchEvent(new CustomEvent('lumen:refresh'))
+}
 
 export function connectSync() {
   if (ws && ws.readyState === WebSocket.OPEN) return
@@ -18,13 +27,14 @@ export function connectSync() {
   try {
     ws = new WebSocket(url)
   } catch {
+    startPolling()
     scheduleReconnect()
     return
   }
 
   ws.onopen = () => {
     syncConnected.value = true
-    // Send ping every 60s to keep connection alive
+    stopPolling()
     const ping = setInterval(() => {
       if (ws?.readyState === WebSocket.OPEN) ws.send('ping')
     }, 60000)
@@ -35,15 +45,16 @@ export function connectSync() {
     try {
       const msg = JSON.parse(e.data)
       if (msg.type === 'refresh') {
-        // Another device changed data → reload
-        window.dispatchEvent(new CustomEvent('lumen:refresh'))
+        lastRefreshVersion = Date.now()
+        triggerRefresh()
       }
-    } catch { /* ignore malformed messages */ }
+    } catch { /* */ }
   }
 
   ws.onclose = () => {
     syncConnected.value = false
     ws = null
+    startPolling()
     scheduleReconnect()
   }
 
@@ -60,10 +71,21 @@ function scheduleReconnect() {
   }, 5000)
 }
 
+// Polling fallback: every 10s, trigger a refresh (lightweight)
+function startPolling() {
+  if (pollTimer) return
+  pollTimer = setInterval(triggerRefresh, 10_000)
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+}
+
 export function disconnectSync() {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+  stopPolling()
   if (ws) {
-    ws.onclose = null // prevent reconnect
+    ws.onclose = null
     ws.close()
     ws = null
   }

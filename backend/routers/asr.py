@@ -100,6 +100,7 @@ async def websocket_asr(frontend: WebSocket):
         latest_usage: dict | None = None
         events_received = 0
         audio_bytes_sent = 0
+        audio_since_commit = False       # VAD commit 后是否有新音频，避免空 commit
 
         def _combined_text() -> str:
             """当前累计 + 正在进行的这段，供 interim 展示用。"""
@@ -157,6 +158,7 @@ async def websocket_asr(frontend: WebSocket):
                     if usage:
                         latest_usage = usage
                     latest_partial = ""  # 这段已归档到 final_text_parts
+                    audio_since_commit = False  # VAD 已提交，重置标志
                     logger.info(
                         f"[ASR] utterance completed: {transcript!r} "
                         f"(累计 {len(final_text_parts)} 段, stop_requested={stop_requested})"
@@ -222,8 +224,8 @@ async def websocket_asr(frontend: WebSocket):
                         f"已归档 {len(final_text_parts)} 段）"
                     )
                     stop_requested = True
-                    # 只有实际发送过音频数据时才 commit，否则直接结束
-                    if audio_bytes_sent > 0 and relay_ws.state is State.OPEN:
+                    # 只有 VAD commit 后有新音频时才再次 commit，避免空 buffer 报错
+                    if audio_since_commit and relay_ws.state is State.OPEN:
                         try:
                             await relay_ws.send(json.dumps(_audio_commit(), ensure_ascii=False))
                         except Exception:
@@ -257,6 +259,7 @@ async def websocket_asr(frontend: WebSocket):
                         b64 = base64.b64encode(chunk).decode("ascii")
                         await relay_ws.send(json.dumps(_audio_append(b64), ensure_ascii=False))
                         audio_bytes_sent += len(chunk)
+                        audio_since_commit = True
                         if audio_bytes_sent % 32000 < len(chunk):
                             logger.info(f"[ASR] 累计已发送音频 {audio_bytes_sent} 字节")
                     except Exception:
