@@ -25,7 +25,6 @@ const eventCount = ref(0)
 
 const toast = ref<{ type: 'success' | 'error' | 'info'; message: string; icon?: string } | null>(null)
 const mergeCandidates = ref<MergeCandidate[]>([])
-const showRecords = ref(false)
 const showStatusDetail = ref(false)
 
 // 后台处理状态：显示一个不阻塞的"整理中"角标
@@ -220,42 +219,30 @@ onMounted(async () => {
       </div>
     </Transition>
 
-    <!-- Records Overlay (slide-in on mobile, centered modal on desktop) -->
-    <Teleport to="body">
-      <Transition name="drawer">
-        <div v-if="showRecords" class="fixed inset-0 z-40 flex lg:items-center lg:justify-center" @click.self="showRecords = false">
-          <div class="absolute inset-0 bg-black/20 backdrop-blur-sm" />
-          <!-- Mobile: slide from left | Desktop: centered card -->
-          <div class="relative bg-white shadow-2xl overflow-y-auto
-            absolute inset-y-0 left-0 w-80 max-w-[85vw]
-            lg:static lg:inset-auto lg:w-[480px] lg:max-h-[70vh] lg:rounded-2xl lg:mx-4">
-            <div class="sticky top-0 bg-white/95 backdrop-blur border-b border-stone-100 px-5 py-4 flex items-center justify-between lg:rounded-t-2xl">
-              <h2 class="text-sm font-bold text-stone-700"><i class="fa-solid fa-note-sticky mr-2 text-violet-400"></i>最近记录</h2>
-              <button @click="showRecords = false" class="text-stone-300 hover:text-stone-500"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div class="p-4 space-y-2">
-              <div v-if="recentRecords.length === 0" class="text-center py-12 text-stone-400">
-                <i class="fa-solid fa-note-sticky text-2xl mb-2 block text-stone-200"></i>
-                <p class="text-xs">暂无记录</p>
-              </div>
-              <div v-for="rec in recentRecords" :key="rec.id"
-                class="rounded-xl bg-stone-50 px-4 py-3">
-                <p class="text-sm text-stone-700 leading-snug">{{ rec.content }}</p>
-                <div class="flex items-center justify-between mt-2">
-                  <p class="text-xs text-stone-400">{{ formatRelative(rec.created_at) }}</p>
-                  <div class="flex gap-1">
-                    <button @click="handleReprocessRecord(rec.id)" class="text-xs text-violet-400 hover:text-violet-600 px-2 py-1"><i class="fa-solid fa-rotate-right mr-1"></i>重整理</button>
-                    <button @click="handleDeleteRecord(rec.id)" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1"><i class="fa-solid fa-trash-can mr-1"></i>删除</button>
-                  </div>
-                </div>
-              </div>
-              <button v-if="recordCount > 5" @click="router.push('/timeline'); showRecords = false"
-                class="w-full text-xs text-violet-500 font-medium py-2 text-center">查看全部 {{ recordCount }} 条记录 →</button>
+    <!-- Records Section (inline) -->
+    <section v-if="hasContent">
+      <div class="flex items-center justify-between mb-2.5">
+        <h2 class="text-sm font-bold text-stone-700">
+          <i class="fa-solid fa-note-sticky mr-1.5 text-violet-400"></i>最近记录
+          <span class="text-xs text-stone-400 font-normal ml-1">{{ recordCount }} 条</span>
+        </h2>
+        <button @click="router.push('/timeline')" class="text-xs text-violet-500 font-medium">查看全部 →</button>
+      </div>
+      <div v-if="recentRecords.length === 0" class="text-center py-6 text-stone-300 text-xs">暂无记录</div>
+      <div v-else class="space-y-1.5">
+        <div v-for="rec in recentRecords.slice(0, 5)" :key="rec.id"
+          class="rounded-xl bg-stone-50 px-4 py-3">
+          <p class="text-sm text-stone-700 leading-snug">{{ rec.content }}</p>
+          <div class="flex items-center justify-between mt-2">
+            <p class="text-xs text-stone-400">{{ formatRelative(rec.created_at) }}</p>
+            <div class="flex gap-1">
+              <button @click="handleReprocessRecord(rec.id)" class="text-xs text-violet-400 hover:text-violet-600 px-2 py-1"><i class="fa-solid fa-rotate-right mr-1"></i>重整理</button>
+              <button @click="handleDeleteRecord(rec.id)" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1"><i class="fa-solid fa-trash-can mr-1"></i>删除</button>
             </div>
           </div>
         </div>
-      </Transition>
-    </Teleport>
+      </div>
+    </section>
 
     <!-- Merge Suggestions -->
     <TransitionGroup name="merge-fade" tag="div" class="space-y-2 mb-4">
@@ -432,41 +419,6 @@ onMounted(async () => {
       <p class="text-xs text-stone-300 mt-1">想到什么写什么，不用想太多</p>
     </div>
 
-    <!-- Quick action: records button (floating) -->
-    <button v-if="hasContent" @click="showRecords = true"
-      class="fixed bottom-24 right-4 lg:bottom-8 lg:right-8 z-30 w-11 h-11 lg:w-12 lg:h-12 rounded-full bg-white shadow-lg border border-stone-200 flex items-center justify-center text-stone-400 hover:text-violet-500 active:scale-95 transition-all"
-      aria-label="最近记录">
-      <i class="fa-solid fa-clock-rotate-left text-lg"></i>
-      <span v-if="recordCount > 0" class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-violet-500 text-white text-[9px] font-bold flex items-center justify-center">{{ recordCount > 9 ? '9+' : recordCount }}</span>
-    </button>
-
-    <!-- Desktop: Records modal -->
-    <Teleport to="body">
-      <Transition name="drawer">
-        <div v-if="showRecords" class="fixed inset-0 z-40 hidden lg:flex items-center justify-center" @click.self="showRecords = false">
-          <div class="absolute inset-0 bg-black/20" />
-          <div class="relative bg-white rounded-2xl shadow-2xl w-[480px] max-h-[70vh] overflow-y-auto mx-4">
-            <div class="sticky top-0 bg-white border-b border-stone-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
-              <h2 class="text-sm font-bold text-stone-700">最近记录</h2>
-              <button @click="showRecords = false" class="text-stone-300 hover:text-stone-500"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div class="p-4 space-y-2">
-              <div v-for="rec in recentRecords" :key="rec.id"
-                class="rounded-xl bg-stone-50 px-4 py-3">
-                <p class="text-sm text-stone-700 leading-snug">{{ rec.content }}</p>
-                <div class="flex items-center justify-between mt-2">
-                  <p class="text-xs text-stone-400">{{ formatRelative(rec.created_at) }}</p>
-                  <div class="flex gap-1">
-                    <button @click="handleReprocessRecord(rec.id)" class="text-xs text-violet-400 hover:text-violet-600 px-2 py-1"><i class="fa-solid fa-rotate-right mr-1"></i>重整理</button>
-                    <button @click="handleDeleteRecord(rec.id)" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1"><i class="fa-solid fa-trash-can mr-1"></i>删除</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
   </div>
 </template>
 
@@ -480,11 +432,6 @@ onMounted(async () => {
 .merge-fade-leave-active { transition: all 0.15s ease; }
 .merge-fade-enter-from { opacity: 0; transform: translateY(-6px); }
 .merge-fade-leave-to { opacity: 0; transform: translateX(16px); }
-
-.drawer-enter-active { transition: all 0.2s ease; }
-.drawer-leave-active { transition: all 0.15s ease; }
-.drawer-enter-from { opacity: 0; }
-.drawer-leave-to { opacity: 0; }
 
 .expand-enter-active { transition: all 0.2s ease; }
 .expand-leave-active { transition: all 0.15s ease; }

@@ -18,6 +18,10 @@ const currentTitle = computed(() => {
   const tab = tabs.find(t => t.path === route.path)
   return tab ? tab.title : ''
 })
+const showIcp = computed(() => {
+  const host = location.hostname.toLowerCase()
+  return host === 'guppy.ltd' || host.endsWith('.guppy.ltd')
+})
 </script>
 
 <template>
@@ -62,6 +66,11 @@ const currentTitle = computed(() => {
     <main class="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 lg:px-8 py-4 sm:py-5 lg:py-6">
       <router-view />
     </main>
+
+    <!-- ICP 备案（仅 guppy.ltd 域名显示） -->
+    <footer v-if="showIcp" class="shrink-0 text-center py-2.5 border-t border-stone-50">
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" class="text-[11px] text-stone-400 hover:text-stone-600 transition-colors">渝ICP备2023009735号</a>
+    </footer>
 
     <!-- Mobile bottom tabs (only on sub-pages: timeline/tasks/query) -->
     <nav v-if="!isHome" class="lg:hidden shrink-0 bg-white border-t border-stone-100 flex justify-around py-1.5 px-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">

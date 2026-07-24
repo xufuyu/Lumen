@@ -109,10 +109,21 @@ jobs:
 
       # ── SSH & rsync 上传 ─────────────────────────────────────
       - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          printf '%s\n' "${SSH_KEY}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+          # 检查密钥格式：如果仍是 OpenSSH 新格式，尝试原地转为 PEM
+          if grep -q 'BEGIN OPENSSH PRIVATE KEY' ~/.ssh/deploy_key; then
+            echo "==> 检测到 OpenSSH 新格式密钥，正在转换为 PEM 格式..."
+            ssh-keygen -p -m PEM -f ~/.ssh/deploy_key -N '' 2>/dev/null || {
+              echo "WARNING: 密钥格式转换失败，继续使用原格式（可能不被 CI 支持）"
+            }
+          fi
+          # 打印格式确认
+          head -1 ~/.ssh/deploy_key
           ssh-keyscan -p ${REMOTE_PORT} -H ${REMOTE_HOST} >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Rsync to server
