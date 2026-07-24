@@ -213,6 +213,125 @@ jobs:
           WantedBy=multi-user.target
           UNIT
 
+          # ── nginx 安装 + 配置 ────────────────────────────────
+          if ! command -v nginx &>/dev/null; then
+            echo "==> 安装 nginx ..."
+            sudo apt-get install -y -qq nginx
+            # 删除默认站点
+            sudo rm -f /etc/nginx/sites-enabled/default
+          fi
+
+          SSL_CERT="/etc/nginx/ssl/lumen/guppy.ltd_bundle.crt"
+          SSL_KEY="/etc/nginx/ssl/lumen/guppy.ltd.key"
+          HAS_SSL=false
+          if [ -f "$SSL_CERT" ] && [ -f "$SSL_KEY" ]; then
+            HAS_SSL=true
+            echo "✓ 检测到 SSL 证书，启用 HTTPS"
+          else
+            echo "⚠ 未检测到 SSL 证书，仅启用 HTTP"
+          fi
+
+          sudo tee /etc/nginx/sites-available/lumen >/dev/null <<'NGINX'
+          # HTTP → 强制跳转 HTTPS（仅在有证书时）
+          server {
+              listen 80;
+              server_name _;
+              # 用变量控制是否跳转，由 deploy 脚本替换
+              __REDIRECT__
+              location /.well-known/acme-challenge/ { root /var/www/html; }
+
+              # 静态资源
+              location /assets/  { root /opt/lumen/static; expires 30d; add_header Cache-Control "public, immutable"; }
+              location /webfonts/ { root /opt/lumen/static; expires 30d; add_header Cache-Control "public, immutable"; }
+              location /favicon.svg { root /opt/lumen/static; expires 7d; }
+              location /icons.svg   { root /opt/lumen/static; expires 7d; }
+
+              # API + WebSocket
+              location /api/ {
+                  proxy_pass http://127.0.0.1:8000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  proxy_read_timeout 120s;
+              }
+              location /api/asr/ws {
+                  proxy_pass http://127.0.0.1:8000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection "upgrade";
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_read_timeout 3600s;
+                  proxy_send_timeout 3600s;
+              }
+
+              # SPA 回退
+              location / {
+                  root /opt/lumen/static;
+                  try_files $uri $uri/ /index.html;
+              }
+          }
+          NGINX
+
+          if $HAS_SSL; then
+            # 替换占位符为 HTTPS 强制跳转
+            sudo sed -i 's|__REDIRECT__|return 301 https://$host$request_uri;|' /etc/nginx/sites-available/lumen
+            # 追加 HTTPS server block
+            sudo tee -a /etc/nginx/sites-available/lumen >/dev/null <<'NGINXSSL'
+
+          server {
+              listen 443 ssl http2;
+              server_name _;
+
+              ssl_certificate     /etc/nginx/ssl/lumen/guppy.ltd_bundle.crt;
+              ssl_certificate_key /etc/nginx/ssl/lumen/guppy.ltd.key;
+              ssl_protocols TLSv1.2 TLSv1.3;
+              ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+              ssl_prefer_server_ciphers on;
+              ssl_session_cache shared:SSL:10m;
+              add_header Strict-Transport-Security "max-age=63072000" always;
+
+              location /assets/  { root /opt/lumen/static; expires 30d; add_header Cache-Control "public, immutable"; }
+              location /webfonts/ { root /opt/lumen/static; expires 30d; add_header Cache-Control "public, immutable"; }
+              location /favicon.svg { root /opt/lumen/static; expires 7d; }
+              location /icons.svg   { root /opt/lumen/static; expires 7d; }
+
+              location /api/ {
+                  proxy_pass http://127.0.0.1:8000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto https;
+                  proxy_read_timeout 120s;
+              }
+              location /api/asr/ws {
+                  proxy_pass http://127.0.0.1:8000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection "upgrade";
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_read_timeout 3600s;
+                  proxy_send_timeout 3600s;
+              }
+
+              location / {
+                  root /opt/lumen/static;
+                  try_files $uri $uri/ /index.html;
+              }
+          }
+          NGINXSSL
+          else
+            # 无证书：移除占位符（HTTP only）
+            sudo sed -i '/__REDIRECT__/d' /etc/nginx/sites-available/lumen
+          fi
+
+          sudo ln -sf /etc/nginx/sites-available/lumen /etc/nginx/sites-enabled/lumen
+          sudo nginx -t && sudo systemctl restart nginx || { echo "✗ nginx 配置错误"; sudo nginx -t; exit 1; }
+
           sudo systemctl daemon-reload
           sudo systemctl enable lumen
           sudo systemctl restart lumen
@@ -222,18 +341,31 @@ jobs:
 
           # 等 3 秒后自检
           sleep 3
+          OK=true
           if sudo systemctl is-active --quiet lumen; then
             echo "✓ lumen 服务运行中"
-            curl -sf http://127.0.0.1:8000/api/health && echo "" || {
-              echo "✗ 健康检查失败"
-              sudo journalctl -u lumen -n 30 --no-pager
-              exit 1
-            }
           else
             echo "✗ lumen 启动失败"
             sudo journalctl -u lumen -n 30 --no-pager
-            exit 1
+            OK=false
           fi
+          if sudo systemctl is-active --quiet nginx; then
+            echo "✓ nginx 运行中"
+            CURL_OPTS="-sf"
+            # 有证书时跳过证书验证（CI 自检 localhost，证书域名不匹配）
+            $HAS_SSL && CURL_OPTS="-sfk"
+            curl $CURL_OPTS https://127.0.0.1:443/api/health 2>/dev/null && echo "" || \
+            curl -sf http://127.0.0.1:80/api/health && echo "" || {
+              echo "✗ nginx → 后端健康检查失败"
+              sudo journalctl -u nginx -n 10 --no-pager
+              curl -v http://127.0.0.1:8000/api/health 2>&1 || true
+              OK=false
+            }
+          else
+            echo "✗ nginx 未启动"
+            OK=false
+          fi
+          [ "$OK" = "false" ] && exit 1
           REMOTE
 
       - name: Cleanup SSH key
