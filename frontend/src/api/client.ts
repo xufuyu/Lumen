@@ -266,3 +266,12 @@ export function generateMood() {
 export function getLatestMood() {
   return request<MoodGenerateResponse>('/mood/latest')
 }
+
+// ── User merge ──
+
+export async function mergeUserData(newUserId: string): Promise<{ merged: number; message: string }> {
+  return request('/user/merge', {
+    method: 'POST',
+    body: JSON.stringify({ new_user_id: newUserId }),
+  })
+}

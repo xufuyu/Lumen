@@ -100,4 +100,17 @@ export default {
   mood: {
     refresh: 'Refresh mood',
   },
+  settings: {
+    title: 'Settings',
+    uidLabel: 'Unique ID',
+    uidTip: 'Each ID stores its own independent data. Share the same ID across devices to sync.',
+    copy: 'Copy',
+    copied: 'Copied',
+    changeLabel: 'Switch ID (data will be merged)',
+    changeTip: 'Enter an existing unique ID. All data from the current ID will be merged into the target ID, then the target ID will be used going forward.',
+    save: 'Save',
+    placeholder: 'Enter target ID',
+    merged: 'Merged {count} records into "{uid}". Reloading...',
+    sameId: 'Same ID, nothing to merge.',
+  },
 }

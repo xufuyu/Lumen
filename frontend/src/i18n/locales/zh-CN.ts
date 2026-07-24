@@ -100,4 +100,17 @@ export default {
   mood: {
     refresh: '刷新情绪',
   },
+  settings: {
+    title: '设置',
+    uidLabel: '唯一标识',
+    uidTip: '每个唯一标识拥有独立的数据。在不同设备上输入相同标识即可共享数据。',
+    copy: '复制',
+    copied: '已复制',
+    changeLabel: '切换标识（数据将合并）',
+    changeTip: '输入已有的唯一标识，当前标识的所有数据将合并到目标标识中，之后将使用新标识。',
+    save: '保存',
+    placeholder: '输入目标唯一标识',
+    merged: '已合并 {count} 条数据到「{uid}」，页面即将刷新。',
+    sameId: '标识相同，无需合并。',
+  },
 }

@@ -64,7 +64,9 @@ from routers.process import router as process_router  # noqa: E402
 from routers.mood import router as mood_router  # noqa: E402
 from routers.asr import router as asr_router  # noqa: E402
 from routers.merge import router as merge_router  # noqa: E402
+from routers.user import router as user_router  # noqa: E402
 
+app.include_router(user_router)
 app.include_router(records_router)
 app.include_router(timeline_router)
 app.include_router(tasks_router)

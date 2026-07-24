@@ -4,10 +4,14 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ref } from 'vue'
 import { setLocale, availableLocales } from '../i18n'
-import { getUserId, setUserId } from '../user'
+import { getUserId } from '../user'
+import { mergeUserData } from '../api/client'
 
 const { t, locale } = useI18n()
 const showSettings = ref(false)
+const settingsSaving = ref(false)
+const settingsMsg = ref('')
+const settingsErr = ref(false)
 const router = useRouter()
 const route = useRoute()
 
@@ -30,6 +34,28 @@ const showIcp = computed(() => {
 
 function switchLang() {
   setLocale(locale.value === 'zh-CN' ? 'en' : 'zh-CN')
+}
+
+async function handleMerge(newUid: string) {
+  const oldUid = getUserId()
+  if (newUid === oldUid) {
+    settingsMsg.value = t('settings.sameId')
+    settingsErr.value = true
+    return
+  }
+  settingsSaving.value = true
+  settingsMsg.value = ''
+  try {
+    const res = await mergeUserData(newUid)
+    settingsMsg.value = t('settings.merged', { count: res.merged, uid: newUid })
+    settingsErr.value = false
+    setTimeout(() => { location.reload() }, 2000)
+  } catch (e: unknown) {
+    settingsMsg.value = e instanceof Error ? e.message : 'Merge failed'
+    settingsErr.value = true
+  } finally {
+    settingsSaving.value = false
+  }
 }
 </script>
 
@@ -110,27 +136,36 @@ function switchLang() {
           <div class="absolute inset-0 bg-black/20 backdrop-blur-sm" />
           <div class="relative bg-white rounded-2xl shadow-xl w-[380px] max-w-[90vw] mx-4 p-6">
             <div class="flex items-center justify-between mb-5">
-              <h2 class="text-sm font-bold text-stone-700"><i class="fa-solid fa-gear mr-2 text-violet-400"></i>Settings</h2>
+              <h2 class="text-sm font-bold text-stone-700"><i class="fa-solid fa-gear mr-2 text-violet-400"></i>{{ t('settings.title') }}</h2>
               <button @click="showSettings = false" class="text-stone-300 hover:text-stone-500"><i class="fa-solid fa-xmark"></i></button>
             </div>
 
-            <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wide mb-1.5">Unique ID</label>
+            <!-- Current ID display -->
+            <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wide mb-1.5">{{ t('settings.uidLabel') }}</label>
             <div class="flex items-center gap-2 mb-3">
               <code class="flex-1 bg-stone-50 rounded-lg px-3 py-2 text-xs text-stone-600 font-mono break-all select-all">{{ getUserId() }}</code>
-              <button @click="navigator.clipboard.writeText(getUserId())"
+              <button @click="navigator.clipboard.writeText(getUserId()); settingsMsg = t('settings.copied'); settingsErr = false"
                 class="shrink-0 text-xs text-violet-500 hover:text-violet-700 font-medium px-3 py-2 rounded-lg hover:bg-violet-50 transition-colors">
-                <i class="fa-solid fa-copy mr-1"></i>Copy
+                <i class="fa-solid fa-copy mr-1"></i>{{ t('settings.copy') }}
               </button>
             </div>
+            <p class="text-[10px] text-stone-400 mb-4">{{ t('settings.uidTip') }}</p>
 
-            <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wide mb-1.5">Change ID (all data linked to ID)</label>
-            <form @submit.prevent="(e) => { const v = (e.target as any).uid.value.trim(); if (v) { setUserId(v); showSettings = false; location.reload() } }" class="flex gap-2">
-              <input name="uid" type="text" :placeholder="getUserId()"
+            <!-- Change ID (merge) -->
+            <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wide mb-1.5">{{ t('settings.changeLabel') }}</label>
+            <form @submit.prevent="(e) => { const v = (e.target as any).uid.value.trim(); if (v) handleMerge(v) }" class="flex gap-2 mb-2">
+              <input name="uid" type="text" :placeholder="t('settings.placeholder')"
                 class="flex-1 text-xs bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 focus:outline-none focus:border-violet-400"
                 maxlength="64" pattern="[a-zA-Z0-9_-]+" />
-              <button type="submit" class="text-xs bg-violet-500 text-white rounded-lg px-4 py-2 font-medium hover:bg-violet-600 transition-colors">Save</button>
+              <button type="submit" :disabled="settingsSaving"
+                class="text-xs bg-violet-500 text-white rounded-lg px-4 py-2 font-medium hover:bg-violet-600 disabled:opacity-50 transition-colors">
+                <i v-if="settingsSaving" class="fa-solid fa-spinner animate-spin mr-1"></i>{{ t('settings.save') }}
+              </button>
             </form>
-            <p class="text-[10px] text-stone-400 mt-2">Each unique ID stores its own independent data. Share an ID across devices to sync.</p>
+            <p class="text-[10px] text-stone-400 mb-2">{{ t('settings.changeTip') }}</p>
+
+            <!-- Status message -->
+            <p v-if="settingsMsg" :class="['text-xs rounded-lg px-3 py-2', settingsErr ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600']">{{ settingsMsg }}</p>
           </div>
         </div>
       </Transition>

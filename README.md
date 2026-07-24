@@ -15,7 +15,7 @@
 
 前台只是一个安静的输入框。说完就好，不用整理格式。它不催促、不评判、不给建议、也不做诊断，只是把你散落的一天一点点拾回来，让你在纷乱之中把自己看得更清楚一点。
 
-> **核心信念**：不把推测当成事实。产品只提供生活辅助，不承担诊断或医疗决策。你的所有记录只存在本地设备上。
+> **核心信念**：不把推测当成事实。产品只提供生活辅助，不承担诊断或医疗决策。
 
 ---
 
@@ -30,13 +30,16 @@
 ## 功能
 
 - **自然语言记录** — 想到什么写什么，不需要整理结构。
-- **语音随记** — 实时流式 ASR（Qwen3-ASR），带**二次纠错预览**（尾部灰色斜体，会随后续语音自我修正）。
+- **语音随记** — 实时流式 ASR（Qwen3-ASR），带**二次纠错预览**（尾部灰色斜体，会随后续语音自我修正）。录音结束后 LLM 隐式修正同音字。
 - **7 类声学情绪识别** — 从语音波形直接识别 `neutral / happy / sad / angry / fearful / disgusted / surprised`，不看文字表面。
 - **文字 × 声音双通道情绪融合** — 用户说「没事」但语气疲惫，系统会记下这个偏离。情绪指数由 LLM 融合两者给出，冲突时倾向取更低评分（相信声音多于文字）。
 - **AI 自动整理** — 记录立刻落库，LLM 后台整理成事件/任务/上下文，不阻塞你继续记录。
 - **模糊去重合并** — Levenshtein 匹配 + LLM 语义双保险，避免同一件事被重复登记。中等相似度会**问用户**要不要合并。
 - **同框问答** — 在同一个输入框里，「问一下今晚要做啥」直接切成问答，不用切页面。
-- **隐私优先** — SQLite 本地存储，数据不离开你的设备。LLM 调用走匿名中继（无鉴权）。
+- **多语种支持** — 中文 / English 一键切换，语言偏好保存在本地。
+- **多用户隔离** — 每个唯一标识独立存储数据。不同设备输入相同标识即可共享。
+- **PWA 安装** — 支持添加到手机/桌面主屏幕，独立窗口运行，体验接近原生 App。
+- **HTTPS 强制** — 生产环境自动启用 TLS + HSTS，HTTP 自动跳转 HTTPS。
 
 ## 技术栈
 
@@ -52,18 +55,20 @@
 
 ```
 adventurex/
+├── .github/workflows/
+│   └── deploy.yml          # CI/CD：构建 → rsync → nginx + systemd 部署（HTTPS + 国内镜像源）
 ├── backend/
 │   ├── main.py              # FastAPI 入口
 │   ├── config.py            # 配置（中继 URL、DB 路径）
-│   ├── database.py          # SQLAlchemy 异步引擎
-│   ├── models.py            # ORM 模型（Record/Event/Task/Context/Mood）
+│   ├── database.py          # SQLAlchemy 异步引擎 + user_id 迁移 + Header 依赖
+│   ├── models.py            # ORM 模型（Record/Event/Task/Context/Mood，均含 user_id）
 │   ├── schemas.py           # Pydantic 请求/响应（含 voice_emotion）
 │   ├── services/
-│   │   ├── llm.py           # LLM 调用（含情绪 hint 注入的 4 个 prompt）
-│   │   ├── processor.py     # 记录 → 事件/任务/上下文管线
+│   │   ├── llm.py           # LLM 调用（含情绪 hint 注入的 5 个 prompt）
+│   │   ├── processor.py     # 记录 → 事件/任务/上下文管线（按 user_id 隔离）
 │   │   └── fuzzy_match.py   # Levenshtein 模糊匹配 + 分级去重
 │   └── routers/
-│       ├── records.py       # 记录 CRUD（接收并存 voice_emotion 到 meta_json）
+│       ├── records.py       # 记录 CRUD + ASR 隐式润色
 │       ├── timeline.py      # 时间线事件
 │       ├── tasks.py         # 待办
 │       ├── context.py       # 当前状态摘要
@@ -71,16 +76,21 @@ adventurex/
 │       ├── mood.py          # 情绪指数（融合声学 + 语义）
 │       ├── process.py       # 手动触发整理
 │       ├── merge.py         # 相似任务合并决策
+│       ├── user.py          # 用户数据合并（ID 切换时跨 ID 迁移）
 │       └── asr.py           # WebSocket 桥：前端 ↔ Qwen3-ASR 中继
 └── frontend/
     └── src/
-        ├── api/client.ts    # API 客户端（createRecord 带 voiceEmotion）
-        ├── router/          # Vue Router
-        ├── views/           # HomeView / TimelineView / TasksView / QueryView
+        ├── api/client.ts         # API 客户端（自动附加 X-User-ID）
+        ├── i18n/                 # 多语种（zh-CN / en）
+        │   ├── index.ts          # vue-i18n 配置 + 浏览器语言检测
+        │   └── locales/          # 翻译文件
+        ├── user.ts               # 用户 ID 管理（生成/存储）
+        ├── router/               # Vue Router
+        ├── views/                # HomeView / TimelineView / TasksView / QueryView
         └── components/
-            ├── RecordInput.vue        # 输入框 + stash 纠错预览 + 情绪徽标
-            ├── VoiceRecordButton.vue  # PCM 采集 + WS 传输 + 事件分发
-            ├── AppLayout.vue          # 顶栏 + 底栏 + 响应式壳
+            ├── RecordInput.vue        # 输入框 + 快捷前缀 + 问答检测
+            ├── VoiceRecordButton.vue  # PCM 采集 + WS 传输
+            ├── AppLayout.vue          # 顶栏 + 语言切换 + 设置弹窗 + 底栏
             └── ...
 ```
 
@@ -119,7 +129,7 @@ ASR_RELAY_WS_URL = "wss://advx.fzxufuyu.eu.org/v1/realtime/asr/stream"     # 无
 2. **声音比文字更接近真实状态** — 情绪融合冲突时相信声音（用户可能在文字上强撑）。
 3. **重要结论可追溯** — 每条事件/任务链接回原始记录。
 4. **用户可控** — 确认、修改、删除、合并、拆分。你不是 AI 操控的傀儡。
-5. **隐私优先** — 本地 SQLite，数据不离开设备。中继无鉴权、匿名代管。
+5. **数据可携带** — SQLite 本地存储，多用户通过唯一标识隔离。中继无鉴权、匿名代管。
 6. **不提供医疗建议** — 涉及心理健康话题自动附加免责声明。
 
 ## 中继约束
