@@ -195,18 +195,19 @@ async function start() {
 // ── 停止录音 → 发送 stop → 等待二遍完成 ──
 
 function stop() {
-  // 立即停麦，让用户看到按钮立刻变 idle —— 不能等 done 才停，否则录音继续流
+  // 立即停麦
   cleanupAudio()
-
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    state.value = 'idle'
-    return
-  }
-
+  const wasRecording = state.value === 'recording'
   state.value = 'idle'
-  // 发送 stop 信号，触发服务端 commit + 上游 completed
-  // ws 保留至 done 消息回来，由 handleWsMessage 关闭
-  ws.send(JSON.stringify({ type: 'stop' }))
+
+  if (!ws || ws.readyState !== WebSocket.OPEN) return
+
+  // 只有确实在录音中才发 stop（避免空 buffer commit 报错）
+  if (wasRecording) {
+    ws.send(JSON.stringify({ type: 'stop' }))
+  } else {
+    closeWs()
+  }
 }
 
 function toggle() {

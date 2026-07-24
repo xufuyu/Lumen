@@ -54,18 +54,15 @@ function focusWithPrefix(prefix: string) {
 }
 
 function onStarted() {
-  // 新一轮录音就绪 —— 无论上一次是否正常结束，都在此刻重新拿快照
-  // 修复：上一次因 error/keepalive 断线导致 onCompleted 未触发时，
-  //       isStreaming/streamPrefix 会卡在旧状态，下次录音就会覆盖当前文本
   streamPrefix.value = content.value
   isStreaming.value = true
   submitType.value = 'voice'
 
-  // 取消上一次未完成的润色请求 —— 结果不能再回来覆盖新一轮内容
+  // 取消上一次未完成的润色请求
   if (polishAbort) {
     try { polishAbort.abort() } catch { /* */ }
-    polishAbort = null
   }
+  polishAbort = null
   polishToken++
 }
 
@@ -101,14 +98,17 @@ function onCompleted(text: string, emotion: string) {
 }
 
 async function polishAsrOnce(originalText: string, baseline: string) {
-  // 取消上一个还在飞的润色（保守：即使 token 已换，也主动 abort 免得占连接）
+  // 取消上一个还在飞的润色
   if (polishAbort) {
     try { polishAbort.abort() } catch { /* */ }
+    polishAbort = null
   }
   const myToken = ++polishToken
   const controller = new AbortController()
   polishAbort = controller
-  const timeoutId = setTimeout(() => controller.abort(), POLISH_TIMEOUT_MS)
+  const timeoutId = setTimeout(() => {
+    try { controller.abort() } catch { /* */ }
+  }, POLISH_TIMEOUT_MS)
 
   try {
     const res = await polishAsrText(originalText, controller.signal)
@@ -118,14 +118,15 @@ async function polishAsrOnce(originalText: string, baseline: string) {
     if (!res.changed) return
     if (content.value !== baseline) return
 
-    // 尾部替换：baseline 结构是 (streamPrefix + ' ' + originalText) 或纯 originalText
-    // 用 endsWith + slice 找到 tail 起点，只替换 tail
+    // 尾部替换
     const tailStart = baseline.length - originalText.length
     if (tailStart >= 0 && baseline.slice(tailStart) === originalText) {
       content.value = baseline.slice(0, tailStart) + res.polished
     }
-  } catch {
-    // 超时 / 网络 / 后端错都静默降级，用户始终看到 ASR 原文
+  } catch (e: unknown) {
+    // AbortError（超时/新录音）和网络错误都静默降级
+    if (e instanceof Error && e.name === 'AbortError') return
+    // 其他错误也不影响用户，继续使用 ASR 原文
   } finally {
     clearTimeout(timeoutId)
     if (polishAbort === controller) polishAbort = null

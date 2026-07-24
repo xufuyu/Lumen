@@ -1,16 +1,30 @@
 const BASE = '/api'
 
+class AbortError extends Error {
+  constructor() { super('Request aborted'); this.name = 'AbortError' }
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  })
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(err || `HTTP ${res.status}`)
+  const signal = options?.signal
+  // 提前短路：signal 已 abort 时不发请求
+  if (signal?.aborted) throw new AbortError()
+  try {
+    const res = await fetch(`${BASE}${url}`, {
+      headers: { 'Content-Type': 'application/json', ...options?.headers },
+      ...options,
+    })
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(err || `HTTP ${res.status}`)
+    }
+    if (res.status === 204) return undefined as T
+    return res.json()
+  } catch (e: unknown) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new AbortError()
+    }
+    throw e
   }
-  if (res.status === 204) return undefined as T
-  return res.json()
 }
 // ── Records ──
 

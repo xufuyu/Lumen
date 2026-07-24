@@ -215,17 +215,20 @@ async def websocket_asr(frontend: WebSocket):
                         f"已归档 {len(final_text_parts)} 段）"
                     )
                     stop_requested = True
-                    # 主动 commit 结束最后一段 utterance
-                    try:
-                        await relay_ws.send(json.dumps(_audio_commit(), ensure_ascii=False))
-                    except Exception:
-                        pass
-                    logger.info("[ASR] 已 commit，等待最后一段 completed ...")
-                    # 等最后一段回来（10s 兜底）
-                    try:
-                        await asyncio.wait_for(done.wait(), timeout=10.0)
-                    except asyncio.TimeoutError:
-                        logger.warning("[ASR] 等待最后一段 completed 超时（10s）")
+                    # 只有实际发送过音频数据时才 commit，否则直接结束
+                    if audio_bytes_sent > 0 and relay_ws.state is State.OPEN:
+                        try:
+                            await relay_ws.send(json.dumps(_audio_commit(), ensure_ascii=False))
+                        except Exception:
+                            pass
+                        logger.info("[ASR] 已 commit，等待最后一段 completed ...")
+                        # 等最后一段回来（10s 兜底）
+                        try:
+                            await asyncio.wait_for(done.wait(), timeout=10.0)
+                        except asyncio.TimeoutError:
+                            logger.warning("[ASR] 等待最后一段 completed 超时（10s）")
+                    else:
+                        logger.info("[ASR] 无音频数据，跳过 commit")
                     # 下发合并后的最终结果
                     full_text = "".join(final_text_parts) + latest_partial
                     logger.info(f"[ASR] 会话结束: {full_text!r} emotion={latest_emotion!r}")

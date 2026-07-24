@@ -244,6 +244,7 @@ jobs:
               # 静态资源
               location /assets/  { root /opt/lumen/static; expires 30d; add_header Cache-Control "public, immutable"; }
               location /webfonts/ { root /opt/lumen/static; expires 30d; add_header Cache-Control "public, immutable"; }
+              location /favicon.ico  { root /opt/lumen/static; expires 7d; }
               location /favicon.svg { root /opt/lumen/static; expires 7d; }
               location /icons.svg   { root /opt/lumen/static; expires 7d; }
 
@@ -297,6 +298,7 @@ jobs:
 
               location /assets/  { root /opt/lumen/static; expires 30d; add_header Cache-Control "public, immutable"; }
               location /webfonts/ { root /opt/lumen/static; expires 30d; add_header Cache-Control "public, immutable"; }
+              location /favicon.ico  { root /opt/lumen/static; expires 7d; }
               location /favicon.svg { root /opt/lumen/static; expires 7d; }
               location /icons.svg   { root /opt/lumen/static; expires 7d; }
 
