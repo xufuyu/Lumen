@@ -217,9 +217,11 @@ jobs:
           if ! command -v nginx &>/dev/null; then
             echo "==> 安装 nginx ..."
             sudo apt-get install -y -qq nginx
-            # 删除默认站点
-            sudo rm -f /etc/nginx/sites-enabled/default
           fi
+          # 清理所有默认站点，避免 server_name / default_server 冲突
+          sudo rm -f /etc/nginx/sites-enabled/default
+          sudo rm -f /etc/nginx/conf.d/default.conf 2>/dev/null || true
+          sudo rm -f /etc/nginx/sites-available/default 2>/dev/null || true
 
           SSL_CERT="/etc/nginx/ssl/lumen/guppy.ltd_bundle.crt"
           SSL_KEY="/etc/nginx/ssl/lumen/guppy.ltd.key"
@@ -234,7 +236,7 @@ jobs:
           sudo tee /etc/nginx/sites-available/lumen >/dev/null <<'NGINX'
           # HTTP → 强制跳转 HTTPS（仅在有证书时），default_server 避免冲突
           server {
-              listen 80 default_server;
+              listen 80;
               server_name guppy.ltd *.guppy.ltd;
               # __REDIRECT__ 会被脚本替换为 return 301（有证书时）或删除（无证书时）
               location /.well-known/acme-challenge/ { root /var/www/html; }
