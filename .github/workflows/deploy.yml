@@ -183,7 +183,7 @@ jobs:
             sudo python3 -m venv $APP_DIR/backend/.venv
           fi
           sudo $APP_DIR/backend/.venv/bin/pip install --upgrade pip -q
-          sudo $APP_DIR/backend/.venv/bin/pip install -r $APP_DIR/backend/requirements.txt -q
+          sudo env PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 $APP_DIR/backend/.venv/bin/pip install -r $APP_DIR/backend/requirements.txt -q
 
           # 权限
           sudo chown -R lumen:lumen $APP_DIR
