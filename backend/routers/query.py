@@ -34,9 +34,9 @@ async def ask_question(body: QueryRequest, db: AsyncSession = Depends(get_db), u
         raise HTTPException(status_code=400, detail="问题不能为空")
 
     # 1. 收集相关上下文
-    records = await _get_recent_records(db, limit=50)
-    events = await _get_recent_events(db, limit=30)
-    tasks = await _get_active_tasks(db, limit=20)
+    records = await _get_recent_records(db, uid, limit=50)
+    events = await _get_recent_events(db, uid, limit=30)
+    tasks = await _get_active_tasks(db, uid, limit=20)
 
     if not records and not events and not tasks:
         return QueryResponse(
@@ -85,11 +85,11 @@ async def ask_question(body: QueryRequest, db: AsyncSession = Depends(get_db), u
     )
 
 
-async def _get_recent_records(db: AsyncSession, limit: int = 50) -> list[dict]:
+async def _get_recent_records(db: AsyncSession, uid: str, limit: int = 50) -> list[dict]:
     """获取最近的非归档记录作为问答上下文。"""
     result = await db.execute(
         select(Record)
-        .where(Record.status.in_(["processed", "unprocessed"]))
+        .where(Record.user_id == uid, Record.status.in_(["processed", "unprocessed"]))
         .order_by(Record.created_at.desc())
         .limit(limit)
     )
@@ -104,11 +104,11 @@ async def _get_recent_records(db: AsyncSession, limit: int = 50) -> list[dict]:
     ]
 
 
-async def _get_recent_events(db: AsyncSession, limit: int = 30) -> list[dict]:
+async def _get_recent_events(db: AsyncSession, uid: str, limit: int = 30) -> list[dict]:
     """获取最近的非删除事件作为问答上下文。"""
     result = await db.execute(
         select(Event)
-        .where(Event.status.in_(["inferred", "confirmed", "modified"]))
+        .where(Event.user_id == uid, Event.status.in_(["inferred", "confirmed", "modified"]))
         .order_by(Event.created_at.desc())
         .limit(limit)
     )
@@ -126,11 +126,11 @@ async def _get_recent_events(db: AsyncSession, limit: int = 30) -> list[dict]:
     ]
 
 
-async def _get_active_tasks(db: AsyncSession, limit: int = 20) -> list[dict]:
+async def _get_active_tasks(db: AsyncSession, uid: str, limit: int = 20) -> list[dict]:
     """获取活跃任务作为问答上下文。"""
     result = await db.execute(
         select(Task)
-        .where(Task.status.in_(["pending", "in_progress"]))
+        .where(Task.user_id == uid, Task.status.in_(["pending", "in_progress"]))
         .order_by(Task.created_at.desc())
         .limit(limit)
     )

@@ -40,9 +40,10 @@ async def list_events(
     status: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
+    uid: str = Depends(current_user_id),
 ):
     """List timeline events, ordered by start_time descending."""
-    base = select(Event).where(Event.user_id == uid, (Event.status != "deleted")
+    base = select(Event).where(Event.user_id == uid, Event.status != "deleted")
 
     if status:
         statuses = [s.strip() for s in status.split(",")]
@@ -74,7 +75,7 @@ async def list_events(
 @router.get("/{event_id}", response_model=EventOut)
 async def get_event(event_id: int, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
     """Get a single event with its source records."""
-    result = await db.execute(select(Event).where(Event.user_id == uid, (Event.id == event_id))
+    result = await db.execute(select(Event).where(Event.user_id == uid, Event.id == event_id))
     event = result.scalar_one_or_none()
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -83,10 +84,10 @@ async def get_event(event_id: int, db: AsyncSession = Depends(get_db), uid: str 
 
 @router.put("/{event_id}", response_model=EventOut)
 async def update_event(
-    event_id: int, body: EventUpdate, db: AsyncSession = Depends(get_db)
+    event_id: int, body: EventUpdate, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)
 ):
     """Confirm, modify, or delete an event."""
-    result = await db.execute(select(Event).where(Event.user_id == uid, (Event.id == event_id))
+    result = await db.execute(select(Event).where(Event.user_id == uid, Event.id == event_id))
     event = result.scalar_one_or_none()
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -114,7 +115,7 @@ async def update_event(
 @router.delete("/{event_id}", status_code=204)
 async def delete_event(event_id: int, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
     """Soft-delete an event."""
-    result = await db.execute(select(Event).where(Event.user_id == uid, (Event.id == event_id))
+    result = await db.execute(select(Event).where(Event.user_id == uid, Event.id == event_id))
     event = result.scalar_one_or_none()
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
