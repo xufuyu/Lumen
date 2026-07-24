@@ -200,7 +200,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4 lg:gap-5 min-h-[calc(100dvh-7rem)] lg:min-h-0">
+  <div class="flex flex-col h-[calc(100dvh-7rem)] lg:h-auto lg:min-h-0 gap-4 lg:grid lg:grid-cols-5 lg:gap-5 lg:grid-flow-dense">
 
     <!-- Toast -->
     <Transition name="toast-slide">
@@ -219,33 +219,8 @@ onMounted(async () => {
       </div>
     </Transition>
 
-    <!-- Records Section (inline) -->
-    <section v-if="hasContent">
-      <div class="flex items-center justify-between mb-2.5">
-        <h2 class="text-sm font-bold text-stone-700">
-          <i class="fa-solid fa-note-sticky mr-1.5 text-violet-400"></i>最近记录
-          <span class="text-xs text-stone-400 font-normal ml-1">{{ recordCount }} 条</span>
-        </h2>
-        <button @click="router.push('/timeline')" class="text-xs text-violet-500 font-medium">查看全部 →</button>
-      </div>
-      <div v-if="recentRecords.length === 0" class="text-center py-6 text-stone-300 text-xs">暂无记录</div>
-      <div v-else class="space-y-1.5">
-        <div v-for="rec in recentRecords.slice(0, 5)" :key="rec.id"
-          class="rounded-xl bg-stone-50 px-4 py-3">
-          <p class="text-sm text-stone-700 leading-snug">{{ rec.content }}</p>
-          <div class="flex items-center justify-between mt-2">
-            <p class="text-xs text-stone-400">{{ formatRelative(rec.created_at) }}</p>
-            <div class="flex gap-1">
-              <button @click="handleReprocessRecord(rec.id)" class="text-xs text-violet-400 hover:text-violet-600 px-2 py-1"><i class="fa-solid fa-rotate-right mr-1"></i>重整理</button>
-              <button @click="handleDeleteRecord(rec.id)" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1"><i class="fa-solid fa-trash-can mr-1"></i>删除</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Merge Suggestions -->
-    <TransitionGroup name="merge-fade" tag="div" class="space-y-2 mb-4">
+    <!-- Merge Suggestions (desktop: full width) -->
+    <TransitionGroup name="merge-fade" tag="div" class="space-y-2 lg:col-span-5">
       <div v-for="c in mergeCandidates" :key="c.new_task_id"
         class="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
         <p class="text-xs text-stone-600 leading-snug">
@@ -262,65 +237,70 @@ onMounted(async () => {
       </div>
     </TransitionGroup>
 
-    <!-- ===== SECTION 1: Tasks (top, prominent) ===== -->
-    <section v-if="hasContent">
-      <div class="flex items-center justify-between mb-2.5">
-        <h2 class="text-sm font-bold text-stone-700">
-          <i class="fa-solid fa-circle-check mr-1.5 text-violet-400"></i>我要做什么？
-          <span class="text-xs text-stone-400 font-normal ml-1">{{ taskCount }} 项</span>
-        </h2>
-        <button @click="router.push('/tasks')" class="text-xs text-violet-500 font-medium">查看全部 →</button>
-      </div>
-      <div v-if="activeTasks.length === 0" class="text-center py-6 text-stone-300 text-xs">还没有想做的事</div>
-      <div v-else class="space-y-1.5">
-        <div v-for="task in activeTasks.slice(0, 4)" :key="task.id"
-          @click="router.push('/tasks')"
-          class="flex items-center gap-3 rounded-xl bg-stone-50 px-4 py-3 hover:bg-stone-100 transition-colors cursor-pointer active:scale-[0.98]">
-          <span :class="['w-2 h-2 rounded-full shrink-0', task.priority === 'high' ? 'bg-rose-400' : task.priority === 'medium' ? 'bg-amber-400' : 'bg-stone-300']"></span>
-          <span :class="['text-sm flex-1 truncate', task.status === 'done' ? 'text-stone-400 line-through' : 'text-stone-700']">{{ task.title }}</span>
-          <span :class="['text-[10px] px-1.5 py-0.5 rounded-full font-medium', priorityBadge(task.priority)]">{{ priorityLabel(task.priority) }}</span>
+    <!-- ===== Sections: mobile scrollable, desktop grid items via contents ===== -->
+    <div class="flex-1 overflow-y-auto overscroll-contain lg:overflow-visible lg:flex-none lg:contents space-y-4 lg:space-y-0">
+
+      <!-- Tasks: left column top on desktop -->
+      <section v-if="hasContent" class="lg:col-span-3 lg:row-start-1">
+        <div class="flex items-center justify-between mb-2.5">
+          <h2 class="text-sm font-bold text-stone-700">
+            <i class="fa-solid fa-circle-check mr-1.5 text-violet-400"></i>我要做什么？
+            <span class="text-xs text-stone-400 font-normal ml-1">{{ taskCount }} 项</span>
+          </h2>
+          <button @click="router.push('/tasks')" class="text-xs text-violet-500 font-medium">查看全部 →</button>
         </div>
-      </div>
-    </section>
-
-    <!-- ===== SECTION 2: Timeline (mid) ===== -->
-    <section v-if="hasContent">
-      <div class="flex items-center justify-between mb-2.5">
-        <h2 class="text-sm font-bold text-stone-700">
-          <i class="fa-solid fa-calendar-days mr-1.5 text-violet-400"></i>我做了什么？
-          <span class="text-xs text-stone-400 font-normal ml-1">{{ eventCount }} 个事件</span>
-        </h2>
-        <button @click="router.push('/timeline')" class="text-xs text-violet-500 font-medium">查看全部 →</button>
-      </div>
-      <div v-if="recentEvents.length === 0" class="text-center py-6 text-stone-300 text-xs">暂无事件</div>
-      <div v-else class="space-y-1.5">
-        <div v-for="evt in recentEvents.slice(0, 3)" :key="evt.id"
-          @click="router.push('/timeline')"
-          class="flex items-center gap-3 rounded-xl bg-stone-50 px-4 py-2.5 hover:bg-stone-100 transition-colors cursor-pointer">
-          <div class="w-1.5 h-1.5 rounded-full bg-violet-200 shrink-0"></div>
-          <span class="text-sm text-stone-600 truncate flex-1">{{ evt.title }}</span>
-          <span v-if="evt.status === 'inferred'" class="text-[10px] text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-full">推测</span>
+        <div v-if="activeTasks.length === 0" class="text-center py-6 text-stone-300 text-xs">还没有想做的事</div>
+        <div v-else class="space-y-1.5">
+          <div v-for="task in activeTasks.slice(0, 4)" :key="task.id"
+            @click="router.push('/tasks')"
+            class="flex items-center gap-3 rounded-xl bg-stone-50 px-4 py-3 hover:bg-stone-100 transition-colors cursor-pointer active:scale-[0.98]">
+            <span :class="['w-2 h-2 rounded-full shrink-0', task.priority === 'high' ? 'bg-rose-400' : task.priority === 'medium' ? 'bg-amber-400' : 'bg-stone-300']"></span>
+            <span :class="['text-sm flex-1 truncate', task.status === 'done' ? 'text-stone-400 line-through' : 'text-stone-700']">{{ task.title }}</span>
+            <span :class="['text-[10px] px-1.5 py-0.5 rounded-full font-medium', priorityBadge(task.priority)]">{{ priorityLabel(task.priority) }}</span>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- ===== Context (above input) ===== -->
-    <section v-if="context && context.id !== 0">
-      <div class="flex items-center justify-between mb-2.5">
-        <h2 class="text-sm font-bold text-stone-700">
-          <i class="fa-solid fa-location-dot mr-1.5 text-violet-400"></i>我正在做什么？
-        </h2>
-        <button @click="handleRefreshContext()" class="text-xs text-violet-500 font-medium">
-          <i :class="['fa-solid mr-1', contextLoading ? 'fa-spinner animate-spin' : 'fa-arrows-rotate']"></i>刷新
-        </button>
-      </div>
-      <div class="rounded-xl bg-stone-50 px-4 py-3">
-        <p class="text-sm text-stone-600 leading-relaxed line-clamp-3">{{ context.summary }}</p>
-      </div>
-    </section>
+      <!-- Events: left column bottom on desktop -->
+      <section v-if="hasContent" class="lg:col-span-3 lg:row-start-2">
+        <div class="flex items-center justify-between mb-2.5">
+          <h2 class="text-sm font-bold text-stone-700">
+            <i class="fa-solid fa-calendar-days mr-1.5 text-violet-400"></i>我做了什么？
+            <span class="text-xs text-stone-400 font-normal ml-1">{{ eventCount }} 个事件</span>
+          </h2>
+          <button @click="router.push('/timeline')" class="text-xs text-violet-500 font-medium">查看全部 →</button>
+        </div>
+        <div v-if="recentEvents.length === 0" class="text-center py-6 text-stone-300 text-xs">暂无事件</div>
+        <div v-else class="space-y-1.5">
+          <div v-for="evt in recentEvents.slice(0, 3)" :key="evt.id"
+            @click="router.push('/timeline')"
+            class="flex items-center gap-3 rounded-xl bg-stone-50 px-4 py-2.5 hover:bg-stone-100 transition-colors cursor-pointer">
+            <div class="w-1.5 h-1.5 rounded-full bg-violet-200 shrink-0"></div>
+            <span class="text-sm text-stone-600 truncate flex-1">{{ evt.title }}</span>
+            <span v-if="evt.status === 'inferred'" class="text-[10px] text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-full">推测</span>
+          </div>
+        </div>
+      </section>
 
-    <!-- Input + Mood group (pushed to bottom) -->
-    <div class="mt-auto space-y-3 lg:space-y-4">
+      <!-- Context: right column bottom on desktop -->
+      <section v-if="context && context.id !== 0" class="lg:col-span-2 lg:col-start-4 lg:row-start-2">
+        <div class="flex items-center justify-between mb-2.5">
+          <h2 class="text-sm font-bold text-stone-700">
+            <i class="fa-solid fa-location-dot mr-1.5 text-violet-400"></i>我正在做什么？
+          </h2>
+          <button @click="handleRefreshContext()" class="text-xs text-violet-500 font-medium">
+            <i :class="['fa-solid mr-1', contextLoading ? 'fa-spinner animate-spin' : 'fa-arrows-rotate']"></i>刷新
+          </button>
+        </div>
+        <div class="rounded-xl bg-stone-50 px-4 py-3">
+          <p class="text-sm text-stone-600 leading-relaxed line-clamp-3">{{ context.summary }}</p>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Input + Mood group (mobile: bottom bar; desktop: below grid) -->
+    <div class="shrink-0 lg:col-span-5 space-y-3 lg:space-y-4 bg-white pt-2 lg:pt-0">
       <!-- QA log (inline chat above input) -->
       <TransitionGroup name="qa-fade" tag="div" class="space-y-2">
         <div v-for="qa in qaLog" :key="qa.id"
@@ -412,14 +392,64 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- Empty state -->
-    <div v-if="!hasContent && !contextLoading" class="flex-1 flex flex-col items-center justify-center py-16 text-center">
+    <!-- Records: desktop right-column top (hidden on mobile) -->
+    <section v-if="hasContent" class="hidden lg:block lg:col-start-4 lg:col-span-2 lg:row-start-1">
+      <div class="flex items-center justify-between mb-2.5">
+        <h2 class="text-sm font-bold text-stone-700">
+          <i class="fa-solid fa-note-sticky mr-1.5 text-violet-400"></i>最近记录
+          <span class="text-xs text-stone-400 font-normal ml-1">{{ recordCount }} 条</span>
+        </h2>
+        <button @click="router.push('/timeline')" class="text-xs text-violet-500 font-medium">查看全部 →</button>
+      </div>
+      <div v-if="recentRecords.length === 0" class="text-center py-6 text-stone-300 text-xs">暂无记录</div>
+      <div v-else class="space-y-1.5">
+        <div v-for="rec in recentRecords.slice(0, 5)" :key="rec.id"
+          class="rounded-xl bg-stone-50 px-4 py-3">
+          <p class="text-sm text-stone-700 leading-snug">{{ rec.content }}</p>
+          <div class="flex items-center justify-between mt-2">
+            <p class="text-xs text-stone-400">{{ formatRelative(rec.created_at) }}</p>
+            <div class="flex gap-1">
+              <button @click="handleReprocessRecord(rec.id)" class="text-xs text-violet-400 hover:text-violet-600 px-2 py-1"><i class="fa-solid fa-rotate-right mr-1"></i>重整理</button>
+              <button @click="handleDeleteRecord(rec.id)" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1"><i class="fa-solid fa-trash-can mr-1"></i>删除</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Empty state (desktop: full width) -->
+    <div v-if="!hasContent && !contextLoading" class="flex-1 lg:col-span-5 flex flex-col items-center justify-center py-16 text-center">
       <i class="fa-solid fa-hand-wave text-3xl mb-3 block text-stone-200"></i>
       <p class="text-sm text-stone-400 font-medium">在下方输入框中记录你的日常</p>
       <p class="text-xs text-stone-300 mt-1">想到什么写什么，不用想太多</p>
     </div>
 
   </div>
+
+  <!-- Records: mobile below viewport (scroll down to see) -->
+  <section v-if="hasContent" class="lg:hidden px-4 sm:px-6 pt-4 pb-6 space-y-1.5">
+    <div class="flex items-center justify-between mb-2.5">
+      <h2 class="text-sm font-bold text-stone-700">
+        <i class="fa-solid fa-note-sticky mr-1.5 text-violet-400"></i>最近记录
+        <span class="text-xs text-stone-400 font-normal ml-1">{{ recordCount }} 条</span>
+      </h2>
+      <button @click="router.push('/timeline')" class="text-xs text-violet-500 font-medium">查看全部 →</button>
+    </div>
+    <div v-if="recentRecords.length === 0" class="text-center py-6 text-stone-300 text-xs">暂无记录</div>
+    <div v-else class="space-y-1.5">
+      <div v-for="rec in recentRecords.slice(0, 5)" :key="rec.id"
+        class="rounded-xl bg-stone-50 px-4 py-3">
+        <p class="text-sm text-stone-700 leading-snug">{{ rec.content }}</p>
+        <div class="flex items-center justify-between mt-2">
+          <p class="text-xs text-stone-400">{{ formatRelative(rec.created_at) }}</p>
+          <div class="flex gap-1">
+            <button @click="handleReprocessRecord(rec.id)" class="text-xs text-violet-400 hover:text-violet-600 px-2 py-1"><i class="fa-solid fa-rotate-right mr-1"></i>重整理</button>
+            <button @click="handleDeleteRecord(rec.id)" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1"><i class="fa-solid fa-trash-can mr-1"></i>删除</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 </template>
 
 <style scoped>

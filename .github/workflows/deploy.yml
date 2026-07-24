@@ -12,7 +12,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       # 中继 IP 从 Secret 读取，方便日后换机不用改代码
       RELAY_HOST: ${{ secrets.RELAY_HOST }}
@@ -140,6 +140,19 @@ jobs:
               ${REMOTE_USER}@${REMOTE_HOST} 'bash -s' <<'REMOTE'
           set -euo pipefail
           APP_DIR=/opt/lumen
+
+          # ── 配置国内镜像源（仅首次，提速 apt/pip） ─────────────────
+          MIRROR_DONE="/etc/apt/.mirror-configured"
+          if [ ! -f "$MIRROR_DONE" ]; then
+            echo "==> 配置国内镜像源 ..."
+            # apt: Ubuntu 24.04 使用 Tsinghua 镜像
+            sudo sed -i 's|http://.*archive.ubuntu.com|http://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+            sudo sed -i 's|http://.*archive.ubuntu.com|http://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list 2>/dev/null || true
+            # pip: 全局配置 Tsinghua PyPI 镜像
+            sudo mkdir -p /etc/pip
+            printf '[global]\nindex-url = https://pypi.tuna.tsinghua.edu.cn/simple\ntrusted-host = pypi.tuna.tsinghua.edu.cn\n' | sudo tee /etc/pip/pip.conf >/dev/null
+            sudo touch "$MIRROR_DONE"
+          fi
 
           # 首次部署：装依赖、建用户、建目录
           if [ ! -d "$APP_DIR" ]; then
