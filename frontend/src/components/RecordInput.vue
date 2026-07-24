@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import VoiceRecordButton from './VoiceRecordButton.vue'
 import { polishAsrText } from '../api/client'
 
+const { t } = useI18n()
 const props = defineProps<{ disabled?: boolean }>()
 const emit = defineEmits<{
   submit: [content: string, type: string, voiceEmotion: string]
@@ -27,11 +29,11 @@ let polishAbort: AbortController | null = null
 const POLISH_TIMEOUT_MS = 3500  // 超时放弃
 
 const prompts = [
-  { label: '刚做完', prefix: '我刚做完：', icon: 'fa-check', color: 'text-emerald-500' },
-  { label: '要做的', prefix: '我需要做：', icon: 'fa-flag', color: 'text-amber-500' },
-  { label: '在想', prefix: '我在想：', icon: 'fa-lightbulb', color: 'text-violet-500' },
-  { label: '感受', prefix: '我的感受：', icon: 'fa-heart', color: 'text-rose-500' },
-  { label: '问一下', prefix: '问一下：', icon: 'fa-comment-dots', color: 'text-sky-500' },
+  { label: t('input.prefixes.justDid'), prefix: t('input.prefixesFull.justDid'), icon: 'fa-check', color: 'text-emerald-500' },
+  { label: t('input.prefixes.needToDo'), prefix: t('input.prefixesFull.needToDo'), icon: 'fa-flag', color: 'text-amber-500' },
+  { label: t('input.prefixes.thinking'), prefix: t('input.prefixesFull.thinking'), icon: 'fa-lightbulb', color: 'text-violet-500' },
+  { label: t('input.prefixes.feeling'), prefix: t('input.prefixesFull.feeling'), icon: 'fa-heart', color: 'text-rose-500' },
+  { label: t('input.prefixes.ask'), prefix: t('input.prefixesFull.ask'), icon: 'fa-comment-dots', color: 'text-sky-500' },
 ]
 
 // 问答意图检测：不依赖标点。
@@ -185,7 +187,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick, true))
         v-model="content"
         @input="onManualInput"
         @keydown.enter.exact.prevent="handleEnter"
-        :placeholder="looksLikeQuestion ? '看起来是个问题… 按回车我来回答' : '随便记点什么… 想到什么写什么'"
+        :placeholder="looksLikeQuestion ? t('input.placeholderQuestion') : t('input.placeholderDefault')"
         rows="3"
         :disabled="disabled"
         class="w-full resize-none text-base sm:text-lg text-stone-800 placeholder:text-stone-300 bg-transparent border-none focus:outline-none leading-relaxed disabled:opacity-50"
@@ -202,7 +204,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick, true))
             :class="['shrink-0 flex items-center gap-1 text-[11px] sm:text-xs rounded-full px-2.5 sm:px-3 py-1.5 transition-colors whitespace-nowrap disabled:opacity-50 font-medium',
               showPrefixMenu ? 'bg-violet-100 text-violet-600' : 'text-violet-500 bg-violet-50 active:bg-violet-100']">
             <i :class="['fa-solid', showPrefixMenu ? 'fa-xmark' : 'fa-plus', 'text-[10px]']"></i>
-            <span>快捷</span>
+            <span>{{ t('input.quick') }}</span>
           </button>
 
           <Transition name="prefix-pop">
@@ -226,7 +228,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick, true))
           looksLikeQuestion
             ? 'bg-sky-500 active:bg-sky-600 shadow-sky-200'
             : 'bg-violet-500 active:bg-violet-600 shadow-violet-200']"
-        :title="looksLikeQuestion ? '按下发送问题（回车键）' : '按下保存记录（回车键）'"
+        :title="looksLikeQuestion ? t('input.askButton') : t('input.record')"
       >
         <i :class="['fa-solid mr-1 text-xs', looksLikeQuestion ? 'fa-comment-dots' : 'fa-check']"></i>
         {{ disabled ? '…' : looksLikeQuestion ? '问一下' : '记录' }}

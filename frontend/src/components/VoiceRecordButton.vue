@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const emit = defineEmits<{
   // 新一轮录音真正开始（麦克风+WS 均就绪）—— RecordInput 用它复位 streaming 状态
   started: []
@@ -68,7 +70,7 @@ function handleWsMessage(e: MessageEvent) {
         break
 
       case 'error':
-        error.value = msg.message || '语音识别错误'
+        error.value = msg.message || t('input.micError')
         // 出错也算一次结束 —— 通知父组件复位状态，别把下一次录音的文本覆盖当前输入
         emit('completed', '', '')
         cleanupAudio()
@@ -89,7 +91,7 @@ function handleWsClose() {
 }
 
 function handleWsError() {
-  error.value = '语音服务连接失败'
+  error.value = t('input.micError')
   emit('completed', '', '')
   cleanupAudio()
   closeWs()
@@ -184,9 +186,9 @@ async function start() {
   } catch (e: unknown) {
     cleanup()
     if (e instanceof DOMException && e.name === 'NotAllowedError') {
-      error.value = '麦克风权限被拒绝'
+      error.value = t('input.micError')
     } else {
-      error.value = e instanceof Error ? e.message : '无法启动录音'
+      error.value = e instanceof Error ? e.message : t('input.micError')
     }
     state.value = 'idle'
   }
@@ -238,11 +240,11 @@ onUnmounted(cleanup)
         state === 'recording' ? 'bg-rose-500 text-white animate-pulse' :
         state === 'connecting' ? 'bg-amber-100 text-amber-500' :
         'bg-stone-100 text-stone-400 active:bg-violet-100 active:text-violet-500']"
-      :title="state === 'recording' ? '点击停止' : state === 'connecting' ? '连接中...' : '语音输入'">
+      :title="state === 'recording' ? t('input.stop') : state === 'connecting' ? t('input.connecting') : t('input.record')">
       <i :class="['fa-solid', state === 'recording' ? 'fa-stop' : state === 'connecting' ? 'fa-spinner animate-spin' : 'fa-microphone']"></i>
     </button>
-    <span v-if="state === 'recording'" class="text-xs text-rose-400 font-medium shrink-0">说话中...</span>
-    <span v-else-if="state === 'connecting'" class="text-xs text-amber-500 shrink-0">连接中...</span>
+    <span v-if="state === 'recording'" class="text-xs text-rose-400 font-medium shrink-0">{{ t('input.recording') }}</span>
+    <span v-else-if="state === 'connecting'" class="text-xs text-amber-500 shrink-0">{{ t('input.connecting') }}</span>
     <span v-if="error" class="text-xs text-rose-500 shrink-0 truncate max-w-[120px]">{{ error }}</span>
   </div>
 </template>

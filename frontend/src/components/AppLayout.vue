@@ -1,27 +1,34 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { setLocale, availableLocales } from '../i18n'
 import PrivacyBadge from './PrivacyBadge.vue'
 
+const { t, locale } = useI18n()
 const router = useRouter()
 const route = useRoute()
 
-const tabs = [
-  { name: 'home', label: '首页', title: '首页', path: '/', icon: 'fa-house' },
-  { name: 'timeline', label: '做过', title: '我做了什么？', path: '/timeline', icon: 'fa-calendar-days' },
-  { name: 'tasks', label: '要做', title: '我要做什么？', path: '/tasks', icon: 'fa-circle-check' },
-  { name: 'query', label: '问答', title: '问答', path: '/query', icon: 'fa-comment-dots' },
-]
+const tabs = computed(() => [
+  { name: 'home', label: t('nav.home'), title: t('nav.home'), path: '/', icon: 'fa-house' },
+  { name: 'timeline', label: t('nav.timeline'), title: t('home.eventsTitle'), path: '/timeline', icon: 'fa-calendar-days' },
+  { name: 'tasks', label: t('nav.tasks'), title: t('home.tasksTitle'), path: '/tasks', icon: 'fa-circle-check' },
+  { name: 'query', label: t('nav.query'), title: t('nav.query'), path: '/query', icon: 'fa-comment-dots' },
+])
 
 const isHome = computed(() => route.path === '/')
 const currentTitle = computed(() => {
-  const tab = tabs.find(t => t.path === route.path)
+  const tab = tabs.value.find(t => t.path === route.path)
   return tab ? tab.title : ''
 })
 const showIcp = computed(() => {
   const host = location.hostname.toLowerCase()
   return host === 'guppy.ltd' || host.endsWith('.guppy.ltd')
 })
+
+function switchLang() {
+  setLocale(locale.value === 'zh-CN' ? 'en' : 'zh-CN')
+}
 </script>
 
 <template>
@@ -33,7 +40,7 @@ const showIcp = computed(() => {
         <!-- Back button (sub-pages) -->
         <button v-if="!isHome" @click="router.push('/')"
           class="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors -ml-1"
-          aria-label="返回首页">
+          :aria-label="t('nav.back')">
           <i class="fa-solid fa-arrow-left text-sm"></i>
         </button>
 
@@ -41,12 +48,19 @@ const showIcp = computed(() => {
           <img src="/favicon.ico" class="w-full h-full object-contain" alt="Lumen" />
         </div>
         <template v-if="isHome">
-          <h1 class="text-sm font-bold text-stone-800 tracking-tight leading-none">拾光</h1>
-          <span class="hidden sm:inline text-[10px] text-stone-400">Lumen</span>
+          <h1 class="text-sm font-bold text-stone-800 tracking-tight leading-none">{{ t('app.title') }}</h1>
+          <span v-if="t('app.subtitle')" class="hidden sm:inline text-[10px] text-stone-400">{{ t('app.subtitle') }}</span>
         </template>
         <template v-else>
           <h1 class="text-sm font-semibold text-stone-700 truncate">{{ currentTitle }}</h1>
         </template>
+
+        <!-- Language switcher (next to title) -->
+        <button @click="switchLang"
+          class="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded text-stone-400 hover:text-violet-500 hover:bg-violet-50 transition-colors"
+          :title="locale === 'zh-CN' ? 'Switch to English' : '切换到中文'">
+          {{ availableLocales.find(l => l.code === locale)?.label || '中' }}
+        </button>
       </div>
 
       <div class="flex items-center gap-2">

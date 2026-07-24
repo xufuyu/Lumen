@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import {
   createRecord, triggerProcess, getCurrentContext, listRecords, listTasks, listEvents,
   generateMood, getLatestMood, deleteRecord, updateRecord, resolveMerge, askQuestion,
@@ -9,6 +10,7 @@ import {
 } from '../api/client'
 import RecordInput from '../components/RecordInput.vue'
 
+const { t } = useI18n()
 const router = useRouter()
 
 const context = ref<ContextOut | null>(null)
@@ -58,11 +60,11 @@ function showToast(type: 'success' | 'error' | 'info', message: string, icon?: s
 onUnmounted(clearToastTimer)
 
 async function handleDeleteRecord(id: number) {
-  if (!confirm('确定要删除这条记录吗？')) return
-  try { await deleteRecord(id); showToast('success', '记录已删除。'); await loadAll() } catch (e: unknown) { showToast('error', `删除失败：${e instanceof Error ? e.message : '未知错误'}`) }
+  if (!confirm(t('records.delete') + '?')) return
+  try { await deleteRecord(id); showToast('success', t('records.delete') + ' OK'); await loadAll() } catch (e: unknown) { showToast('error', `${t('input.procError')}: ${e instanceof Error ? e.message : ''}`) }
 }
 async function handleReprocessRecord(id: number) {
-  try { await updateRecord(id, { status: 'unprocessed' }); await triggerProcess(); showToast('success', '已重新整理。'); await loadAll() } catch (e: unknown) { showToast('error', `整理失败：${e instanceof Error ? e.message : '未知错误'}`) }
+  try { await updateRecord(id, { status: 'unprocessed' }); await triggerProcess(); showToast('success', t('records.reprocess') + ' OK'); await loadAll() } catch (e: unknown) { showToast('error', `${t('input.procError')}: ${e instanceof Error ? e.message : ''}`) }
 }
 
 async function loadAll() {
@@ -75,16 +77,16 @@ async function loadAll() {
     context.value = ctx; recentRecords.value = recs.items; recordCount.value = recs.total
     activeTasks.value = tasks.items; taskCount.value = tasks.total; recentEvents.value = events.items; eventCount.value = events.total
     if (m?.mood) mood.value = m.mood
-  } catch { showToast('error', '加载数据失败，请检查网络连接。') } finally { contextLoading.value = false }
+  } catch { showToast('error', t('input.procError')) } finally { contextLoading.value = false }
 }
 
 async function handleRefreshContext() {
   contextLoading.value = true
-  try { await triggerProcess(); context.value = await getCurrentContext(); showToast('success', '"我正在做什么？"已刷新。') } catch (e: unknown) { showToast('error', `刷新失败：${e instanceof Error ? e.message : '未知错误'}`) } finally { contextLoading.value = false }
+  try { await triggerProcess(); context.value = await getCurrentContext(); showToast('success', t('home.contextTitle') + ' OK') } catch (e: unknown) { showToast('error', `${t('input.procError')}: ${e instanceof Error ? e.message : ''}`) } finally { contextLoading.value = false }
 }
 async function handleRefreshMood() {
   moodLoading.value = true
-  try { const res = await generateMood(); if (res.mood) { mood.value = res.mood; showToast('success', '情绪指数已生成。') } else { showToast('error', res.message || '生成失败。') } } catch (e: unknown) { showToast('error', `生成失败：${e instanceof Error ? e.message : '未知错误'}`) } finally { moodLoading.value = false }
+  try { const res = await generateMood(); if (res.mood) { mood.value = res.mood; showToast('success', t('mood.refresh')) } else { showToast('error', res.message || t('input.procError')) } } catch (e: unknown) { showToast('error', `${t('input.procError')}: ${e instanceof Error ? e.message : ''}`) } finally { moodLoading.value = false }
 }
 
 // ── 提交记录：只等 createRecord（快），整理放后台 ────────────────
@@ -93,11 +95,11 @@ async function handleSubmit(content: string, type: string = 'text', voiceEmotion
   try {
     // voiceEmotion 静默传给后端参与 Mood 融合，不告诉用户识别到什么情绪
     await createRecord(content, type, voiceEmotion || undefined)
-    showToast('success', '已记录，正在后台整理…')
+    showToast('success', t('input.procLabel'))
     // 快速刷新列表让新记录立刻显示（此时状态是 unprocessed）
     loadAll()
   } catch (e: unknown) {
-    showToast('error', `记录失败：${e instanceof Error ? e.message : '未知错误'}`)
+    showToast('error', `${t('input.procError')}: ${e instanceof Error ? e.message : ''}`)
     submitting.value = false
     return
   }
@@ -114,13 +116,13 @@ async function handleSubmit(content: string, type: string = 'text', voiceEmotion
     // 只在有实质产出时才提示，避免噪音
     if (procResult.tasks_created || procResult.events_created || procResult.tasks_updated) {
       const bits: string[] = []
-      if (procResult.tasks_created) bits.push(`${procResult.tasks_created} 项待办`)
-      if (procResult.tasks_updated) bits.push(`${procResult.tasks_updated} 项任务更新`)
-      if (procResult.events_created) bits.push(`${procResult.events_created} 个事件`)
-      if (bits.length > 0) showToast('success', `整理完成 · ${bits.join(' · ')}`)
+      if (procResult.tasks_created) bits.push(`${procResult.tasks_created} ${t('input.procTodo')}`)
+      if (procResult.tasks_updated) bits.push(`${procResult.tasks_updated} ${t('input.procUpdate')}`)
+      if (procResult.events_created) bits.push(`${procResult.events_created} ${t('input.procEvent')}`)
+      if (bits.length > 0) showToast('success', `${t('input.procDone')} ${bits.join(' · ')}`)
     }
   } catch (e: unknown) {
-    showToast('error', `后台整理失败：${e instanceof Error ? e.message : '未知错误'}`)
+    showToast('error', `${t('input.procError')}: ${e instanceof Error ? e.message : ''}`)
   } finally {
     processing.value = false
   }
@@ -140,7 +142,7 @@ async function handleAsk(question: string, _voiceEmotion: string = '') {
     entry.sources = res.sources
     entry.disclaimer = res.disclaimer
   } catch (e: unknown) {
-    entry.answer = `抱歉，出错了：${e instanceof Error ? e.message : '未知错误'}`
+    entry.answer = `Error: ${e instanceof Error ? e.message : ''}`
   } finally {
     entry.loading = false
   }
@@ -153,9 +155,9 @@ async function handleResolveMerge(candidate: MergeCandidate, action: 'merge' | '
   try {
     await resolveMerge(candidate.new_task_id, action)
     mergeCandidates.value = mergeCandidates.value.filter(c => c.new_task_id !== candidate.new_task_id)
-    showToast('success', action === 'merge' ? '任务已合并。' : '任务分别保留。')
+    showToast('success', action === 'merge' ? t('merge.merge') : t('merge.keep'))
     await loadAll()
-  } catch (e: unknown) { showToast('error', `操作失败：${e instanceof Error ? e.message : '未知错误'}`) }
+  } catch (e: unknown) { showToast('error', `${t('input.procError')}: ${e instanceof Error ? e.message : ''}`) }
 }
 
 function formatRelative(dt: string) {
@@ -169,7 +171,7 @@ function formatRelative(dt: string) {
 }
 
 const priorityBadge = (p: string) => p === 'high' ? 'bg-rose-50 text-rose-600' : p === 'medium' ? 'bg-amber-50 text-amber-600' : 'bg-stone-100 text-stone-500'
-const priorityLabel = (p: string) => p === 'high' ? '高' : p === 'medium' ? '中' : '低'
+const priorityLabel = (p: string) => p === 'high' ? t('priority.high') : p === 'medium' ? t('priority.medium') : t('priority.low')
 const hasContent = computed(() => recordCount.value > 0 || taskCount.value > 0 || eventCount.value > 0)
 
 // Mood display helpers
@@ -193,8 +195,8 @@ onMounted(async () => {
   if (!sessionStorage.getItem('advx-welcomed')) {
     sessionStorage.setItem('advx-welcomed', '1')
     showToast('info', hasContent.value
-      ? '欢迎回来 — 记录任何想到的事，我来帮你整理。'
-      : '欢迎来到拾光 · Lumen — 想到什么就写下来，或者直接问我。')
+      ? t('home.welcomeBack')
+      : t('home.welcome'))
   }
 })
 </script>
@@ -230,9 +232,9 @@ onMounted(async () => {
         </p>
         <div class="flex gap-2 mt-2">
           <button @click="handleResolveMerge(c, 'merge')"
-            class="text-[11px] bg-amber-500 text-white rounded-full px-3 py-1 font-semibold">合并</button>
+            class="text-[11px] bg-amber-500 text-white rounded-full px-3 py-1 font-semibold">{{ t('merge.merge') }}</button>
           <button @click="handleResolveMerge(c, 'keep_separate')"
-            class="text-[11px] bg-white border border-stone-200 text-stone-500 rounded-full px-3 py-1">分开保留</button>
+            class="text-[11px] bg-white border border-stone-200 text-stone-500 rounded-full px-3 py-1">{{ t('merge.keep') }}</button>
         </div>
       </div>
     </TransitionGroup>
@@ -245,11 +247,11 @@ onMounted(async () => {
         <div class="flex items-center justify-between mb-2.5">
           <h2 class="text-sm font-bold text-stone-700">
             <i class="fa-solid fa-circle-check mr-1.5 text-violet-400"></i>我要做什么？
-            <span class="text-xs text-stone-400 font-normal ml-1">{{ taskCount }} 项</span>
+            <span class="text-xs text-stone-400 font-normal ml-1">{{ taskCount }} {{ t('home.tasksUnit') }}</span>
           </h2>
-          <button @click="router.push('/tasks')" class="text-xs text-violet-500 font-medium">查看全部 →</button>
+          <button @click="router.push('/tasks')" class="text-xs text-violet-500 font-medium">{{ t('home.viewAll') }}</button>
         </div>
-        <div v-if="activeTasks.length === 0" class="text-center py-6 text-stone-300 text-xs">还没有想做的事</div>
+        <div v-if="activeTasks.length === 0" class="text-center py-6 text-stone-300 text-xs">{{ t('home.tasksEmpty') }}</div>
         <div v-else class="space-y-1.5">
           <div v-for="task in activeTasks.slice(0, 4)" :key="task.id"
             @click="router.push('/tasks')"
@@ -266,18 +268,18 @@ onMounted(async () => {
         <div class="flex items-center justify-between mb-2.5">
           <h2 class="text-sm font-bold text-stone-700">
             <i class="fa-solid fa-calendar-days mr-1.5 text-violet-400"></i>我做了什么？
-            <span class="text-xs text-stone-400 font-normal ml-1">{{ eventCount }} 个事件</span>
+            <span class="text-xs text-stone-400 font-normal ml-1">{{ eventCount }} {{ t('home.eventsUnit') }}</span>
           </h2>
-          <button @click="router.push('/timeline')" class="text-xs text-violet-500 font-medium">查看全部 →</button>
+          <button @click="router.push('/timeline')" class="text-xs text-violet-500 font-medium">{{ t('home.viewAll') }}</button>
         </div>
-        <div v-if="recentEvents.length === 0" class="text-center py-6 text-stone-300 text-xs">暂无事件</div>
+        <div v-if="recentEvents.length === 0" class="text-center py-6 text-stone-300 text-xs">{{ t('home.eventsEmpty') }}</div>
         <div v-else class="space-y-1.5">
           <div v-for="evt in recentEvents.slice(0, 3)" :key="evt.id"
             @click="router.push('/timeline')"
             class="flex items-center gap-3 rounded-xl bg-stone-50 px-4 py-2.5 hover:bg-stone-100 transition-colors cursor-pointer">
             <div class="w-1.5 h-1.5 rounded-full bg-violet-200 shrink-0"></div>
             <span class="text-sm text-stone-600 truncate flex-1">{{ evt.title }}</span>
-            <span v-if="evt.status === 'inferred'" class="text-[10px] text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-full">推测</span>
+            <span v-if="evt.status === 'inferred'" class="text-[10px] text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-full">{{ t('records.inferred') }}</span>
           </div>
         </div>
       </section>
@@ -397,11 +399,11 @@ onMounted(async () => {
       <div class="flex items-center justify-between mb-2.5">
         <h2 class="text-sm font-bold text-stone-700">
           <i class="fa-solid fa-note-sticky mr-1.5 text-violet-400"></i>最近记录
-          <span class="text-xs text-stone-400 font-normal ml-1">{{ recordCount }} 条</span>
+          <span class="text-xs text-stone-400 font-normal ml-1">{{ recordCount }} {{ t('home.recordsUnit') }}</span>
         </h2>
-        <button @click="router.push('/timeline')" class="text-xs text-violet-500 font-medium">查看全部 →</button>
+        <button @click="router.push('/timeline')" class="text-xs text-violet-500 font-medium">{{ t('home.viewAll') }}</button>
       </div>
-      <div v-if="recentRecords.length === 0" class="text-center py-6 text-stone-300 text-xs">暂无记录</div>
+      <div v-if="recentRecords.length === 0" class="text-center py-6 text-stone-300 text-xs">{{ t('home.recordsEmpty') }}</div>
       <div v-else class="space-y-1.5">
         <div v-for="rec in recentRecords.slice(0, 5)" :key="rec.id"
           class="rounded-xl bg-stone-50 px-4 py-3">
@@ -409,8 +411,8 @@ onMounted(async () => {
           <div class="flex items-center justify-between mt-2">
             <p class="text-xs text-stone-400">{{ formatRelative(rec.created_at) }}</p>
             <div class="flex gap-1">
-              <button @click="handleReprocessRecord(rec.id)" class="text-xs text-violet-400 hover:text-violet-600 px-2 py-1"><i class="fa-solid fa-rotate-right mr-1"></i>重整理</button>
-              <button @click="handleDeleteRecord(rec.id)" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1"><i class="fa-solid fa-trash-can mr-1"></i>删除</button>
+              <button @click="handleReprocessRecord(rec.id)" class="text-xs text-violet-400 hover:text-violet-600 px-2 py-1"><i class="fa-solid fa-rotate-right mr-1"></i>{{ t('records.reprocess') }}</button>
+              <button @click="handleDeleteRecord(rec.id)" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1"><i class="fa-solid fa-trash-can mr-1"></i>{{ t('records.delete') }}</button>
             </div>
           </div>
         </div>
@@ -420,8 +422,8 @@ onMounted(async () => {
     <!-- Empty state (desktop: full width) -->
     <div v-if="!hasContent && !contextLoading" class="flex-1 lg:col-span-5 flex flex-col items-center justify-center py-16 text-center">
       <i class="fa-solid fa-hand-wave text-3xl mb-3 block text-stone-200"></i>
-      <p class="text-sm text-stone-400 font-medium">在下方输入框中记录你的日常</p>
-      <p class="text-xs text-stone-300 mt-1">想到什么写什么，不用想太多</p>
+      <p class="text-sm text-stone-400 font-medium">{{ t('home.emptyTitle') }}</p>
+      <p class="text-xs text-stone-300 mt-1">{{ t('home.emptySub') }}</p>
     </div>
 
   </div>
@@ -431,11 +433,11 @@ onMounted(async () => {
     <div class="flex items-center justify-between mb-2.5">
       <h2 class="text-sm font-bold text-stone-700">
         <i class="fa-solid fa-note-sticky mr-1.5 text-violet-400"></i>最近记录
-        <span class="text-xs text-stone-400 font-normal ml-1">{{ recordCount }} 条</span>
+        <span class="text-xs text-stone-400 font-normal ml-1">{{ recordCount }} {{ t('home.recordsUnit') }}</span>
       </h2>
-      <button @click="router.push('/timeline')" class="text-xs text-violet-500 font-medium">查看全部 →</button>
+      <button @click="router.push('/timeline')" class="text-xs text-violet-500 font-medium">{{ t('home.viewAll') }}</button>
     </div>
-    <div v-if="recentRecords.length === 0" class="text-center py-6 text-stone-300 text-xs">暂无记录</div>
+    <div v-if="recentRecords.length === 0" class="text-center py-6 text-stone-300 text-xs">{{ t('home.recordsEmpty') }}</div>
     <div v-else class="space-y-1.5">
       <div v-for="rec in recentRecords.slice(0, 5)" :key="rec.id"
         class="rounded-xl bg-stone-50 px-4 py-3">
@@ -443,8 +445,8 @@ onMounted(async () => {
         <div class="flex items-center justify-between mt-2">
           <p class="text-xs text-stone-400">{{ formatRelative(rec.created_at) }}</p>
           <div class="flex gap-1">
-            <button @click="handleReprocessRecord(rec.id)" class="text-xs text-violet-400 hover:text-violet-600 px-2 py-1"><i class="fa-solid fa-rotate-right mr-1"></i>重整理</button>
-            <button @click="handleDeleteRecord(rec.id)" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1"><i class="fa-solid fa-trash-can mr-1"></i>删除</button>
+            <button @click="handleReprocessRecord(rec.id)" class="text-xs text-violet-400 hover:text-violet-600 px-2 py-1"><i class="fa-solid fa-rotate-right mr-1"></i>{{ t('records.reprocess') }}</button>
+            <button @click="handleDeleteRecord(rec.id)" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1"><i class="fa-solid fa-trash-can mr-1"></i>{{ t('records.delete') }}</button>
           </div>
         </div>
       </div>
