@@ -2,10 +2,12 @@
 import { useRouter, useRoute } from 'vue-router'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { ref } from 'vue'
 import { setLocale, availableLocales } from '../i18n'
-import PrivacyBadge from './PrivacyBadge.vue'
+import { getUserId, setUserId } from '../user'
 
 const { t, locale } = useI18n()
+const showSettings = ref(false)
 const router = useRouter()
 const route = useRoute()
 
@@ -72,7 +74,12 @@ function switchLang() {
             <i :class="['fa-solid', tab.icon, 'mr-1 text-[10px]']"></i>{{ tab.label }}
           </button>
         </nav>
-        <PrivacyBadge />
+        <!-- Settings button -->
+        <button @click="showSettings = true"
+          class="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-stone-400 hover:text-violet-500 hover:bg-violet-50 transition-colors"
+          title="Settings">
+          <i class="fa-solid fa-gear text-xs"></i>
+        </button>
       </div>
     </header>
 
@@ -95,5 +102,38 @@ function switchLang() {
         <span class="text-[10px] font-semibold">{{ tab.label }}</span>
       </button>
     </nav>
+
+    <!-- Settings Dialog -->
+    <Teleport to="body">
+      <Transition name="drawer">
+        <div v-if="showSettings" class="fixed inset-0 z-50 flex items-center justify-center" @click.self="showSettings = false">
+          <div class="absolute inset-0 bg-black/20 backdrop-blur-sm" />
+          <div class="relative bg-white rounded-2xl shadow-xl w-[380px] max-w-[90vw] mx-4 p-6">
+            <div class="flex items-center justify-between mb-5">
+              <h2 class="text-sm font-bold text-stone-700"><i class="fa-solid fa-gear mr-2 text-violet-400"></i>Settings</h2>
+              <button @click="showSettings = false" class="text-stone-300 hover:text-stone-500"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wide mb-1.5">Unique ID</label>
+            <div class="flex items-center gap-2 mb-3">
+              <code class="flex-1 bg-stone-50 rounded-lg px-3 py-2 text-xs text-stone-600 font-mono break-all select-all">{{ getUserId() }}</code>
+              <button @click="navigator.clipboard.writeText(getUserId())"
+                class="shrink-0 text-xs text-violet-500 hover:text-violet-700 font-medium px-3 py-2 rounded-lg hover:bg-violet-50 transition-colors">
+                <i class="fa-solid fa-copy mr-1"></i>Copy
+              </button>
+            </div>
+
+            <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wide mb-1.5">Change ID (all data linked to ID)</label>
+            <form @submit.prevent="(e) => { const v = (e.target as any).uid.value.trim(); if (v) { setUserId(v); showSettings = false; location.reload() } }" class="flex gap-2">
+              <input name="uid" type="text" :placeholder="getUserId()"
+                class="flex-1 text-xs bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 focus:outline-none focus:border-violet-400"
+                maxlength="64" pattern="[a-zA-Z0-9_-]+" />
+              <button type="submit" class="text-xs bg-violet-500 text-white rounded-lg px-4 py-2 font-medium hover:bg-violet-600 transition-colors">Save</button>
+            </form>
+            <p class="text-[10px] text-stone-400 mt-2">Each unique ID stores its own independent data. Share an ID across devices to sync.</p>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>

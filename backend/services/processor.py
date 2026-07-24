@@ -111,14 +111,14 @@ def _parse_dt(val: str | None) -> datetime | None:
 # ── 主处理流程 ────────────────────────────────────────────────────────────────
 
 
-async def process_records(db: AsyncSession) -> dict:
+async def process_records(db: AsyncSession, uid: str = "default") -> dict:
     """处理所有未处理的记录。
 
     返回包含处理计数的摘要字典。
     """
-    # 1. 找到所有未处理的记录
+    # 1. 找到当前用户所有未处理的记录
     result = await db.execute(
-        select(Record).where(Record.status == "unprocessed").order_by(Record.created_at)
+        select(Record).where(Record.user_id == uid, Record.status == "unprocessed").order_by(Record.created_at)
     )
     unprocessed: list[Record] = list(result.scalars().all())
 
@@ -145,7 +145,7 @@ async def process_records(db: AsyncSession) -> dict:
     )
 
     # 3. 获取已有任务用于去重
-    existing_result = await db.execute(select(Task).where(Task.status.in_(["pending", "in_progress"])))
+    existing_result = await db.execute(select(Task).where(Task.user_id == uid, Task.status.in_(["pending", "in_progress"])))
     existing_tasks: list[Task] = list(existing_result.scalars().all())
     existing_tasks_json = json.dumps(
         [{"id": t.id, "title": t.title, "status": t.status} for t in existing_tasks],
@@ -167,7 +167,7 @@ async def process_records(db: AsyncSession) -> dict:
         if isinstance(events_data, list):
             for ev_data in events_data:
                 source_ids = _get(ev_data, "来源记录ID", "source_record_ids", default=[])
-                event = Event(
+                event = Event(user_id=uid, 
                     title=_get(ev_data, "标题", "title", default="未命名事件"),
                     description=_get(ev_data, "描述", "description"),
                     start_time=_parse_dt(_get(ev_data, "开始时间", "start_time")),
@@ -191,7 +191,7 @@ async def process_records(db: AsyncSession) -> dict:
         if isinstance(tasks_data, list):
             # 加载全部非删除任务，用于状态更新匹配
             all_tasks_result = await db.execute(
-                select(Task).where(Task.status != "deleted")
+                select(Task).where(Task.user_id == uid, Task.status != "deleted")
             )
             all_tasks: dict[str, Task] = {}
             for t in all_tasks_result.scalars().all():
@@ -240,7 +240,7 @@ async def process_records(db: AsyncSession) -> dict:
                         tasks_updated += 1
                     elif not existing:
                         # 找不到匹配的任务，退化为新建
-                        task = Task(
+                        task = Task(user_id=uid, 
                             title=original_title,
                             description=_get(t_data, "描述", "description"),
                             priority=_map_priority(_get(t_data, "优先级", "priority", default="中")),
@@ -289,7 +289,7 @@ async def process_records(db: AsyncSession) -> dict:
 
                     elif match_type == "ask_user":
                         # 中分 → 先当新任务创建，但标记为需确认
-                        task = Task(
+                        task = Task(user_id=uid, 
                             title=raw_title,
                             description=_get(t_data, "描述", "description"),
                             priority=_map_priority(_get(t_data, "优先级", "priority", default="中")),
@@ -316,7 +316,7 @@ async def process_records(db: AsyncSession) -> dict:
                         continue
 
                     # new_item → 正常创建
-                    task = Task(
+                    task = Task(user_id=uid, 
                         title=raw_title,
                         description=_get(t_data, "描述", "description"),
                         priority=_map_priority(_get(t_data, "优先级", "priority", default="中")),
@@ -351,7 +351,7 @@ async def process_records(db: AsyncSession) -> dict:
     # 5. 更新上下文快照（尽力而为，不因失败阻断整个管线）
     context_updated = False
     try:
-        await _update_context(db)
+        await _update_context(db, uid)
         context_updated = True
     except Exception:
         logger.exception("上下文更新失败")
@@ -367,12 +367,12 @@ async def process_records(db: AsyncSession) -> dict:
     }
 
 
-async def _update_context(db: AsyncSession) -> None:
+async def _update_context(db: AsyncSession, uid: str = "default") -> None:
     """根据最近的事件和任务生成新的上下文快照。"""
     # 获取最近事件（最近 7 天）
     events_result = await db.execute(
         select(Event)
-        .where(Event.status.in_(["inferred", "confirmed", "modified"]))
+        .where(Event.user_id == uid, Event.status.in_(["inferred", "confirmed", "modified"]))
         .order_by(Event.created_at.desc())
         .limit(30)
     )
@@ -381,7 +381,7 @@ async def _update_context(db: AsyncSession) -> None:
     # 获取待办/进行中的任务
     tasks_result = await db.execute(
         select(Task)
-        .where(Task.status.in_(["pending", "in_progress"]))
+        .where(Task.user_id == uid, Task.status.in_(["pending", "in_progress"]))
         .order_by(Task.created_at.desc())
         .limit(20)
     )
@@ -390,7 +390,7 @@ async def _update_context(db: AsyncSession) -> None:
     # 获取最近语音记录的声学情绪分布（作为 context 生成的额外信号）
     recent_records_result = await db.execute(
         select(Record)
-        .where(Record.type == "voice", Record.status.in_(["processed", "processing"]))
+        .where(Record.user_id == uid, Record.type == "voice", Record.status.in_(["processed", "processing"]))
         .order_by(Record.created_at.desc())
         .limit(10)
     )
@@ -411,7 +411,7 @@ async def _update_context(db: AsyncSession) -> None:
     context_raw = await generate_context(events_json, tasks_json, voice_emo_summary)
     context_data = _safe_json(context_raw)
 
-    context = Context(
+    context = Context(user_id=uid, 
         summary=_get(context_data, "摘要", "summary", default=""),
         valid_from=_now(),
     )

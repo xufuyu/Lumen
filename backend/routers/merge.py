@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from database import get_db
+from database import current_user_id, get_db
 from models import Task, RecordTask
 from schemas import MergeAction
 
@@ -17,10 +17,10 @@ router = APIRouter(prefix="/api/merge", tags=["merge"])
 
 
 @router.post("/resolve")
-async def resolve_merge(body: MergeAction, db: AsyncSession = Depends(get_db)):
+async def resolve_merge(body: MergeAction, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
     """处理合并确认：merge 合并任务 / keep_separate 保持不变。"""
     result = await db.execute(
-        select(Task).where(Task.id == body.new_task_id).options(selectinload(Task.records))
+        select(Task).where(Task.user_id == uid, Task.id == body.new_task_id).options(selectinload(Task.records))
     )
     new_task = result.scalar_one_or_none()
     if not new_task:
@@ -45,7 +45,7 @@ async def resolve_merge(body: MergeAction, db: AsyncSession = Depends(get_db)):
 @router.post("/merge-tasks")
 async def merge_tasks(
     body: dict,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id),
 ):
     """将 source_task_id 合并到 target_task_id。
 
@@ -57,8 +57,8 @@ async def merge_tasks(
     if not source_id or not target_id:
         raise HTTPException(status_code=400, detail="需要 source_task_id 和 target_task_id")
 
-    source = (await db.execute(select(Task).where(Task.id == source_id))).scalar_one_or_none()
-    target = (await db.execute(select(Task).where(Task.id == target_id))).scalar_one_or_none()
+    source = (await db.execute(select(Task).where(Task.user_id == uid, Task.id == source_id))).scalar_one_or_none()
+    target = (await db.execute(select(Task).where(Task.user_id == uid, Task.id == target_id))).scalar_one_or_none()
 
     if not source or not target:
         raise HTTPException(status_code=404, detail="任务不存在")

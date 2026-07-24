@@ -1,3 +1,5 @@
+import { getUserId } from '../user'
+
 const BASE = '/api'
 
 class AbortError extends Error {
@@ -8,9 +10,10 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const signal = options?.signal
   // 提前短路：signal 已 abort 时不发请求
   if (signal?.aborted) throw new AbortError()
+  const uid = getUserId()
   try {
     const res = await fetch(`${BASE}${url}`, {
-      headers: { 'Content-Type': 'application/json', ...options?.headers },
+      headers: { 'Content-Type': 'application/json', 'X-User-ID': uid, ...options?.headers },
       ...options,
     })
     if (!res.ok) {

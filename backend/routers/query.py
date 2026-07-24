@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db
+from database import current_user_id, get_db
 from models import Event, Record, Task
 from schemas import QueryRequest, QueryResponse, QuerySource
 from services.llm import answer_query
@@ -26,7 +26,7 @@ def _get(d: dict, *keys: str, default=None):
 
 
 @router.post("", response_model=QueryResponse)
-async def ask_question(body: QueryRequest, db: AsyncSession = Depends(get_db)):
+async def ask_question(body: QueryRequest, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
     """用自然语言提问，基于用户的记录来回答。"""
     question = body.question.strip()
 

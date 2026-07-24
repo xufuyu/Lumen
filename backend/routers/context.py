@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db
+from database import current_user_id, get_db
 from models import Context, RecordContext
 from schemas import ContextOut
 
@@ -12,10 +12,10 @@ router = APIRouter(prefix="/api/context", tags=["context"])
 
 
 @router.get("/current", response_model=ContextOut)
-async def get_current_context(db: AsyncSession = Depends(get_db)):
+async def get_current_context(db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
     """Get the most recent context snapshot."""
     result = await db.execute(
-        select(Context).order_by(Context.created_at.desc()).limit(1)
+        select(Context).where(Context.user_id == uid).order_by(Context.created_at.desc()).limit(1)
     )
     context = result.scalar_one_or_none()
 

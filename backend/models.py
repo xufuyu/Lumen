@@ -22,6 +22,7 @@ class Record(Base):
     __tablename__ = "records"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(64), nullable=False, default="default", index=True)
     content = Column(Text, nullable=False)
     type = Column(String(20), nullable=False, default="text")  # text | voice
     status = Column(String(20), nullable=False, default="unprocessed")
@@ -39,6 +40,7 @@ class Event(Base):
     __tablename__ = "events"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(64), nullable=False, default="default", index=True)
     title = Column(String(500), nullable=False)
     description = Column(Text)
     start_time = Column(DateTime)
@@ -56,6 +58,7 @@ class Task(Base):
     __tablename__ = "tasks"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(64), nullable=False, default="default", index=True)
     title = Column(String(500), nullable=False)
     description = Column(Text)
     status = Column(String(20), nullable=False, default="pending")
@@ -74,6 +77,7 @@ class Context(Base):
     __tablename__ = "contexts"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(64), nullable=False, default="default", index=True)
     summary = Column(Text, nullable=False)
     valid_from = Column(DateTime, nullable=False, default=_utcnow)
     valid_until = Column(DateTime)
@@ -112,6 +116,7 @@ class Mood(Base):
     __tablename__ = "moods"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(64), nullable=False, default="default", index=True)
     score = Column(Float, nullable=False)  # 1.0 – 10.0
     label = Column(String(20), nullable=False)  # 低落 / 平稳 / 良好
     summary = Column(Text, nullable=False)  # 1-2 sentence interpretation

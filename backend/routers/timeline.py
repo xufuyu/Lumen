@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db
+from database import current_user_id, get_db
 from models import Event, RecordEvent
 from schemas import EventList, EventOut, EventStatus, EventUpdate
 
@@ -42,7 +42,7 @@ async def list_events(
     db: AsyncSession = Depends(get_db),
 ):
     """List timeline events, ordered by start_time descending."""
-    base = select(Event).where(Event.status != "deleted")
+    base = select(Event).where(Event.user_id == uid, (Event.status != "deleted")
 
     if status:
         statuses = [s.strip() for s in status.split(",")]
@@ -72,9 +72,9 @@ async def list_events(
 
 
 @router.get("/{event_id}", response_model=EventOut)
-async def get_event(event_id: int, db: AsyncSession = Depends(get_db)):
+async def get_event(event_id: int, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
     """Get a single event with its source records."""
-    result = await db.execute(select(Event).where(Event.id == event_id))
+    result = await db.execute(select(Event).where(Event.user_id == uid, (Event.id == event_id))
     event = result.scalar_one_or_none()
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -86,7 +86,7 @@ async def update_event(
     event_id: int, body: EventUpdate, db: AsyncSession = Depends(get_db)
 ):
     """Confirm, modify, or delete an event."""
-    result = await db.execute(select(Event).where(Event.id == event_id))
+    result = await db.execute(select(Event).where(Event.user_id == uid, (Event.id == event_id))
     event = result.scalar_one_or_none()
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -112,9 +112,9 @@ async def update_event(
 
 
 @router.delete("/{event_id}", status_code=204)
-async def delete_event(event_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_event(event_id: int, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
     """Soft-delete an event."""
-    result = await db.execute(select(Event).where(Event.id == event_id))
+    result = await db.execute(select(Event).where(Event.user_id == uid, (Event.id == event_id))
     event = result.scalar_one_or_none()
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")

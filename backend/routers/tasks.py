@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db
+from database import current_user_id, get_db
 from models import RecordTask, Task
 from schemas import TaskCreate, TaskList, TaskOut, TaskStatus, TaskUpdate
 
@@ -38,10 +38,10 @@ async def _to_out(task: Task, db: AsyncSession) -> TaskOut:
 async def list_tasks(
     status: str | None = None,
     sort: str = Query("priority", pattern="^(priority|due_date|created_at)$"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id),
 ):
     """List tasks, optionally filtered by status."""
-    base = select(Task).where(Task.status != "deleted")
+    base = select(Task).where(Task.user_id == uid, Task.status != "deleted")
 
     if status:
         statuses = [s.strip() for s in status.split(",")]
@@ -68,9 +68,9 @@ async def list_tasks(
 
 
 @router.get("/{task_id}", response_model=TaskOut)
-async def get_task(task_id: int, db: AsyncSession = Depends(get_db)):
+async def get_task(task_id: int, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
     """Get a single task with source records."""
-    result = await db.execute(select(Task).where(Task.id == task_id))
+    result = await db.execute(select(Task).where(Task.user_id == uid, Task.id == task_id))
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -78,7 +78,7 @@ async def get_task(task_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("", response_model=TaskOut, status_code=201)
-async def create_task(body: TaskCreate, db: AsyncSession = Depends(get_db)):
+async def create_task(body: TaskCreate, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
     """Manually create a task (not inferred from records)."""
     task = Task(
         title=body.title,
@@ -95,9 +95,9 @@ async def create_task(body: TaskCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{task_id}", response_model=TaskOut)
-async def update_task(task_id: int, body: TaskUpdate, db: AsyncSession = Depends(get_db)):
+async def update_task(task_id: int, body: TaskUpdate, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
     """Update a task's details or status."""
-    result = await db.execute(select(Task).where(Task.id == task_id))
+    result = await db.execute(select(Task).where(Task.user_id == uid, Task.id == task_id))
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -123,9 +123,9 @@ async def update_task(task_id: int, body: TaskUpdate, db: AsyncSession = Depends
 
 
 @router.delete("/{task_id}", status_code=204)
-async def delete_task(task_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_task(task_id: int, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
     """Soft-delete a task."""
-    result = await db.execute(select(Task).where(Task.id == task_id))
+    result = await db.execute(select(Task).where(Task.user_id == uid, Task.id == task_id))
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")

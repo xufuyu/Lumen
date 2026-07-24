@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db
+from database import current_user_id, get_db
 from models import Record, RecordEvent, RecordTask
 from schemas import (
     PolishRequest, PolishResponse,
@@ -53,12 +53,13 @@ async def _to_out(record: Record, db: AsyncSession) -> RecordOut:
 
 
 @router.post("", response_model=RecordOut, status_code=201)
-async def create_record(body: RecordCreate, db: AsyncSession = Depends(get_db)):
+async def create_record(body: RecordCreate, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
     """Create a new record. It will be auto-processed in the background."""
     meta: dict = {}
     if body.voice_emotion and body.voice_emotion in _ALLOWED_EMOTIONS:
         meta["voice_emotion"] = body.voice_emotion
     record = Record(
+        user_id=uid,
         content=body.content,
         type=body.type.value,
         status="unprocessed",
@@ -76,10 +77,11 @@ async def list_records(
     page_size: int = Query(20, ge=1, le=100),
     status: str | None = None,
     db: AsyncSession = Depends(get_db),
+    uid: str = Depends(current_user_id),
 ):
     """List records with pagination and optional status filter."""
-    base = select(Record)
-    count_base = select(func.count(Record.id))
+    base = select(Record).where(Record.user_id == uid)
+    count_base = select(func.count(Record.id)).where(Record.user_id == uid)
 
     if status:
         base = base.where(Record.status == status)
@@ -99,9 +101,9 @@ async def list_records(
 
 
 @router.get("/{record_id}", response_model=RecordOut)
-async def get_record(record_id: int, db: AsyncSession = Depends(get_db)):
+async def get_record(record_id: int, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
     """Get a single record with linked event and task IDs."""
-    result = await db.execute(select(Record).where(Record.id == record_id))
+    result = await db.execute(select(Record).where(Record.id == record_id, Record.user_id == uid))
     record = result.scalar_one_or_none()
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -110,10 +112,10 @@ async def get_record(record_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.put("/{record_id}", response_model=RecordOut)
 async def update_record(
-    record_id: int, body: RecordUpdate, db: AsyncSession = Depends(get_db)
+    record_id: int, body: RecordUpdate, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)
 ):
     """Edit a record's content or status."""
-    result = await db.execute(select(Record).where(Record.id == record_id))
+    result = await db.execute(select(Record).where(Record.id == record_id, Record.user_id == uid))
     record = result.scalar_one_or_none()
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -131,9 +133,9 @@ async def update_record(
 
 
 @router.delete("/{record_id}", status_code=204)
-async def delete_record(record_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_record(record_id: int, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
     """Soft-delete a record by archiving it."""
-    result = await db.execute(select(Record).where(Record.id == record_id))
+    result = await db.execute(select(Record).where(Record.id == record_id, Record.user_id == uid))
     record = result.scalar_one_or_none()
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")

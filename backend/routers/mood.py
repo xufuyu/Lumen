@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db
+from database import current_user_id, get_db
 from models import Mood, Record
 from schemas import MoodGenerateResponse, MoodOut
 from services.llm import generate_mood
@@ -57,12 +57,12 @@ def _record_to_dict(rec: Record) -> dict:
 
 
 @router.post("/generate", response_model=MoodGenerateResponse)
-async def generate_mood_snapshot(db: AsyncSession = Depends(get_db)):
+async def generate_mood_snapshot(db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
     """根据最近的记录生成情绪指数快照。"""
     # 获取近期已处理的记录
     result = await db.execute(
         select(Record)
-        .where(Record.status.in_(["processed"]))
+        .where(Record.user_id == uid, Record.status.in_(["processed"]))
         .order_by(Record.created_at.desc())
         .limit(30)
     )
@@ -94,6 +94,7 @@ async def generate_mood_snapshot(db: AsyncSession = Depends(get_db)):
         return MoodGenerateResponse(mood=None, message="情绪指数生成失败，请稍后重试。")
 
     mood = Mood(
+        user_id=uid,
         score=_get(data, "评分", "score", default=5.0),
         label=_get(data, "标签", "label", default="平稳"),
         summary=_get(data, "摘要", "summary", default=""),
@@ -117,10 +118,10 @@ async def generate_mood_snapshot(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/latest", response_model=MoodGenerateResponse)
-async def get_latest_mood(db: AsyncSession = Depends(get_db)):
+async def get_latest_mood(db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
     """获取最近一次情绪指数。"""
     result = await db.execute(
-        select(Mood).order_by(Mood.created_at.desc()).limit(1)
+        select(Mood).where(Mood.user_id == uid).order_by(Mood.created_at.desc()).limit(1)
     )
     mood = result.scalar_one_or_none()
 
