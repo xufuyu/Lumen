@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+/* ── Global resets ─────────────────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+}
+:focus-visible {
+  outline: 2px solid theme('colors.violet.400');
+  outline-offset: 2px;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: theme('colors.stone.200'); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: theme('colors.stone.300'); }
+
+/* ── Selection ─────────────────────────────────────────────── */
+::selection {
+  background: theme('colors.violet.100');
+  color: theme('colors.violet.900');
+}
