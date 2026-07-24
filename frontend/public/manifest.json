@@ -1,0 +1,22 @@
+{
+  "name": "拾光 · Lumen",
+  "short_name": "拾光",
+  "description": "把碎片记录自动整理成时间线、待办和状态摘要",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f5f5f4",
+  "theme_color": "#8b5cf6",
+  "icons": [
+    {
+      "src": "/icon.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "/icon.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ]
+}
