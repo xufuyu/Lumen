@@ -132,6 +132,26 @@ Chat 和 ASR 都通过 `advx.fzxufuyu.eu.org` 中继转发（无需 key，内部
 | ASR 事件 | `text`（累计+纠错） / `stash`（尾部预览） / `emotion`（7 类） / `usage` |
 | 音频格式 | PCM s16le / 16kHz / mono / base64（**不支持 webm**） |
 
-## 许可证
+## 许可协议（双许可模式）
 
-AdventureX 2026 黑客松项目。
+本项目采用双许可模式，使用者可二选一：
+
+### 方案 1：GNU AGPLv3 开源许可（免费）
+
+只要遵守 GNU Affero General Public License v3.0 协议条款，
+您可以免费使用、修改、分发本项目。
+若修改代码并通过网络对外提供服务，必须向终端用户公开完整源代码。
+完整协议文本见仓库内 [LICENSE](LICENSE) 文件。
+
+### 方案 2：商业专有授权（付费）
+
+如果您希望将本项目集成至闭源商业产品，
+并且不想履行 AGPLv3 的开源义务，
+需要向版权持有人购买商业授权。
+
+商业授权洽谈联系方式：
+邮箱：xufuyu@outlook.com
+
+---
+
+版权所有 © 2026 xufuyu

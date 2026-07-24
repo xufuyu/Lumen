@@ -1,6 +1,7 @@
 """Record CRUD endpoints."""
 
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -8,7 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models import Record, RecordEvent, RecordTask
-from schemas import RecordCreate, RecordList, RecordOut, RecordUpdate
+from schemas import (
+    PolishRequest, PolishResponse,
+    RecordCreate, RecordList, RecordOut, RecordUpdate,
+)
+from services.llm import polish_asr_text
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/records", tags=["records"])
 
@@ -134,3 +141,44 @@ async def delete_record(record_id: int, db: AsyncSession = Depends(get_db)):
     record.status = "archived"
     await db.commit()
     return None
+
+
+# ── ASR 润色（隐式，前端在用户没编辑前替换） ────────────────────────────────
+
+
+@router.post("/polish", response_model=PolishResponse)
+async def polish_record(body: PolishRequest):
+    """对 ASR 结果做保守的同音字修正。
+
+    前端语义：录音完成后立刻调用；如果模型返回时 textarea 内容还没被用户编辑过，
+    前端会自动替换为润色结果；否则丢弃。
+
+    异常处理策略（保守）：
+    - LLM 调用失败 → 返回原文，changed=False
+    - 结果长度偏差超过 25% → 视为模型跑偏，返回原文
+    - 结果完全一致 → changed=False
+    """
+    original = body.text
+    try:
+        polished = (await polish_asr_text(original)).strip()
+        # 去掉可能的代码围栏 / 引号包装
+        if polished.startswith("```"):
+            polished = "\n".join(polished.split("\n")[1:-1]).strip()
+        polished = polished.strip('"').strip("'").strip()
+
+        if not polished:
+            return PolishResponse(polished=original, changed=False)
+
+        # 长度偏差保护：模型跑偏就丢弃
+        len_delta = abs(len(polished) - len(original))
+        if len_delta > max(3, len(original) * 0.25):
+            logger.info(f"[polish] 长度偏差过大 ({len(original)}→{len(polished)}), 回退原文")
+            return PolishResponse(polished=original, changed=False)
+
+        changed = polished != original
+        if changed:
+            logger.info(f"[polish] {original!r} → {polished!r}")
+        return PolishResponse(polished=polished, changed=changed)
+    except Exception as e:
+        logger.warning(f"[polish] LLM 调用失败: {e!r}")
+        return PolishResponse(polished=original, changed=False)

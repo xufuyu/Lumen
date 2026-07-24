@@ -1,0 +1,25 @@
+# 环境变量（含密钥）
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 构建产物
+dist/
+dist-ssr/
+
+# 运行时数据（数据库、日志等）
+data/*.db
+data/*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store

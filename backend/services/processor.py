@@ -154,7 +154,9 @@ async def process_records(db: AsyncSession) -> dict:
 
     # 4. 调用 LLM 管线
     events_created = 0
+    events_updated = 0
     tasks_created = 0
+    tasks_updated = 0
     merge_candidates: list[dict] = []  # 需要用户确认的相似任务
 
     try:
@@ -235,7 +237,7 @@ async def process_records(db: AsyncSession) -> dict:
                                 )
                                 if not existing_rec.first():
                                     db.add(RecordTask(record_id=rid, task_id=existing.id))
-                        tasks_created += 1
+                        tasks_updated += 1
                     elif not existing:
                         # 找不到匹配的任务，退化为新建
                         task = Task(
@@ -251,7 +253,8 @@ async def process_records(db: AsyncSession) -> dict:
                         for rid in source_ids:
                             if any(r.id == rid for r in unprocessed):
                                 db.add(RecordTask(record_id=rid, task_id=task.id))
-                        tasks_created += 1
+                        if task_status in ("pending", "in_progress"):
+                            tasks_created += 1
 
                 # ── 新任务 ──
                 else:
@@ -263,11 +266,12 @@ async def process_records(db: AsyncSession) -> dict:
                         # 高分 → 自动合并到已有任务
                         matched_task = all_tasks.get(normalize(matched_title))
                         if matched_task:
-                            # 更新状态（如有变化）
-                            if matched_task.status == "pending" and task_status != "pending":
+                            status_changed = False
+                            # 更新状态（如有变化），但不静默标记为已完成
+                            # 只有改为 in_progress 才能自动更新；改为 done 需要用户确认
+                            if matched_task.status == "pending" and task_status == "in_progress":
                                 matched_task.status = task_status
-                                if task_status == "done":
-                                    matched_task.completed_at = _now()
+                                status_changed = True
                             # 链接记录
                             for rid in source_ids:
                                 if any(r.id == rid for r in unprocessed):
@@ -279,7 +283,8 @@ async def process_records(db: AsyncSession) -> dict:
                                     )
                                     if not existing_rec.first():
                                         db.add(RecordTask(record_id=rid, task_id=matched_task.id))
-                            tasks_created += 1
+                            if status_changed:
+                                tasks_updated += 1
                             continue
 
                     elif match_type == "ask_user":
@@ -297,7 +302,8 @@ async def process_records(db: AsyncSession) -> dict:
                         for rid in source_ids:
                             if any(r.id == rid for r in unprocessed):
                                 db.add(RecordTask(record_id=rid, task_id=task.id))
-                        tasks_created += 1
+                        if task_status in ("pending", "in_progress"):
+                            tasks_created += 1
 
                         # 记录 merge 候选
                         merge_candidates.append({
@@ -325,7 +331,8 @@ async def process_records(db: AsyncSession) -> dict:
                         if any(r.id == rid for r in unprocessed):
                             db.add(RecordTask(record_id=rid, task_id=task.id))
 
-                    tasks_created += 1
+                    if task_status in ("pending", "in_progress"):
+                        tasks_created += 1
 
         # 标记所有记录为已处理
         for rec in unprocessed:
@@ -352,9 +359,9 @@ async def process_records(db: AsyncSession) -> dict:
     return {
         "processed": len(unprocessed),
         "events_created": events_created,
-        "events_updated": 0,
+        "events_updated": events_updated,
         "tasks_created": tasks_created,
-        "tasks_updated": 0,
+        "tasks_updated": tasks_updated,
         "context_updated": context_updated,
         "merge_candidates": merge_candidates,
     }

@@ -1,0 +1,226 @@
+name: Deploy to Tencent Cloud
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # 支持手动触发
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false  # 部署不能被打断
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # 中继 IP 从 Secret 读取，方便日后换机不用改代码
+      RELAY_HOST: ${{ secrets.RELAY_HOST }}
+      OLD_HOST: advx.fzxufuyu.eu.org
+      APP_DIR: /opt/lumen
+      REMOTE_USER: ${{ secrets.DEPLOY_USER }}
+      REMOTE_HOST: ${{ secrets.DEPLOY_HOST }}
+      REMOTE_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── 前置校验：Secret 必须齐全 ─────────────────────────────
+      - name: Validate secrets
+        run: |
+          missing=()
+          [ -n "${RELAY_HOST}" ]                       || missing+=("RELAY_HOST")
+          [ -n "${REMOTE_HOST}" ]                      || missing+=("DEPLOY_HOST")
+          [ -n "${REMOTE_USER}" ]                      || missing+=("DEPLOY_USER")
+          [ -n "${{ secrets.DEPLOY_SSH_KEY }}" ]       || missing+=("DEPLOY_SSH_KEY")
+          [ -n "${{ secrets.RELAY_CA_PEM }}" ]         || missing+=("RELAY_CA_PEM")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "ERROR: 以下 Secret 未配置: ${missing[*]}"
+            exit 1
+          fi
+          echo "✓ Secrets OK: RELAY_HOST=${RELAY_HOST}, DEPLOY_HOST=${REMOTE_HOST}"
+
+      # ── 前端构建 ─────────────────────────────────────────────
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci --prefer-offline --no-audit --no-fund
+          npx vite build --outDir ../deploy/static --emptyOutDir
+
+      # ── 后端打包 ─────────────────────────────────────────────
+      - name: Pack backend
+        run: |
+          mkdir -p deploy/backend
+          cp -r backend/* deploy/backend/
+          find deploy/backend -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+          find deploy/backend -type f -name '*.pyc' -delete 2>/dev/null || true
+          # 删除本地开发用的 .env（服务器有自己的）
+          rm -f deploy/backend/.env
+
+      # ── 全局替换域名 → IP ───────────────────────────────────
+      - name: Rewrite relay host
+        run: |
+          echo "==> 替换 ${OLD_HOST} → ${RELAY_HOST}"
+          # 前端产物 (JS bundle 里可能有硬编码，虽然一般走 /api 相对路径)
+          grep -rl "${OLD_HOST}" deploy/ 2>/dev/null | while read f; do
+            sed -i "s|${OLD_HOST}|${RELAY_HOST}|g" "$f"
+            echo "  patched: $f"
+          done
+          # 显式改后端 config.py 里的默认值（防止 .env 未配置时 fallback 到旧域名）
+          sed -i "s|${OLD_HOST}|${RELAY_HOST}|g" deploy/backend/config.py
+
+      # ── 自签 CA 证书从 Secret 落盘 ───────────────────────────
+      - name: Inject self-signed CA
+        env:
+          CA_PEM: ${{ secrets.RELAY_CA_PEM }}
+        run: |
+          if [ -z "${CA_PEM}" ]; then
+            echo "ERROR: Secret RELAY_CA_PEM 未配置"
+            exit 1
+          fi
+          mkdir -p deploy/backend/certs
+          printf "%s" "${CA_PEM}" > deploy/backend/certs/relay-ca.pem
+          # 简单校验是不是合法 PEM
+          openssl x509 -in deploy/backend/certs/relay-ca.pem -noout -subject -issuer -dates
+          chmod 644 deploy/backend/certs/relay-ca.pem
+
+      # ── 生成 .env（覆盖旧值） ────────────────────────────────
+      - name: Generate .env
+        run: |
+          cat > deploy/lumen.env <<ENV
+          # 由 GitHub Actions 自动生成 — 请勿手动编辑（会被下次部署覆盖）
+          RELAY_BASE_URL=https://${RELAY_HOST}/v1
+          RELAY_API_KEY=sk-relay
+          ASR_RELAY_WS_URL=wss://${RELAY_HOST}/v1/realtime/asr/stream
+          RELAY_CA_BUNDLE=${APP_DIR}/backend/certs/relay-ca.pem
+          RELAY_TLS_INSECURE=false
+          MODEL_PRO=deepseek-v4-flash
+          MODEL_FLASH=deepseek-v4-flash
+          DATABASE_URL=sqlite+aiosqlite:///${APP_DIR}/data/adventurex.db
+          AUTO_PROCESS=true
+          ENV
+
+      # ── SSH & rsync 上传 ─────────────────────────────────────
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${REMOTE_PORT} -H ${REMOTE_HOST} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Rsync to server
+        run: |
+          # 先上传到 /tmp 避免中途覆盖运行中的文件
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p ${REMOTE_PORT}" \
+            deploy/ ${REMOTE_USER}@${REMOTE_HOST}:/tmp/lumen-deploy/
+
+      # ── 服务器端安装 + 重启 ────────────────────────────────
+      - name: Install & restart on server
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${REMOTE_PORT} \
+              ${REMOTE_USER}@${REMOTE_HOST} 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          APP_DIR=/opt/lumen
+
+          # 首次部署：装依赖、建用户、建目录
+          if [ ! -d "$APP_DIR" ]; then
+            echo "==> 首次部署，初始化环境 ..."
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq python3 python3-venv python3-pip
+            sudo id lumen &>/dev/null || sudo useradd -r -s /bin/false -d $APP_DIR lumen
+            sudo mkdir -p $APP_DIR/data
+          fi
+
+          # 停服（首次没这个 unit 不报错）
+          sudo systemctl stop lumen 2>/dev/null || true
+
+          # 同步文件（保留 data/ 和 backend/.venv/）
+          sudo mkdir -p $APP_DIR/backend $APP_DIR/static
+          sudo rsync -a --delete \
+              --exclude='.venv' --exclude='certs' \
+              /tmp/lumen-deploy/backend/ $APP_DIR/backend/
+          # certs 单独同步以保留私钥权限
+          sudo rsync -a /tmp/lumen-deploy/backend/certs/ $APP_DIR/backend/certs/
+          sudo rsync -a --delete /tmp/lumen-deploy/static/ $APP_DIR/static/
+          sudo cp /tmp/lumen-deploy/lumen.env $APP_DIR/.env
+          sudo chmod 600 $APP_DIR/.env
+
+          # venv：首次创建，之后只跟依赖变化 upgrade
+          if [ ! -x $APP_DIR/backend/.venv/bin/python ]; then
+            echo "==> 创建 venv ..."
+            sudo python3 -m venv $APP_DIR/backend/.venv
+          fi
+          sudo $APP_DIR/backend/.venv/bin/pip install --upgrade pip -q
+          sudo $APP_DIR/backend/.venv/bin/pip install -r $APP_DIR/backend/requirements.txt -q
+
+          # 权限
+          sudo chown -R lumen:lumen $APP_DIR
+
+          # systemd（首次或更新时都覆盖）
+          sudo tee /etc/systemd/system/lumen.service >/dev/null <<'UNIT'
+          [Unit]
+          Description=拾光 · Lumen API
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          User=lumen
+          Group=lumen
+          WorkingDirectory=/opt/lumen/backend
+          EnvironmentFile=/opt/lumen/.env
+          ExecStart=/opt/lumen/backend/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
+          Restart=always
+          RestartSec=3
+          NoNewPrivileges=yes
+          PrivateTmp=yes
+          ProtectSystem=strict
+          ReadWritePaths=/opt/lumen/data
+
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+
+          sudo systemctl daemon-reload
+          sudo systemctl enable lumen
+          sudo systemctl restart lumen
+
+          # 清理临时文件
+          rm -rf /tmp/lumen-deploy
+
+          # 等 3 秒后自检
+          sleep 3
+          if sudo systemctl is-active --quiet lumen; then
+            echo "✓ lumen 服务运行中"
+            curl -sf http://127.0.0.1:8000/api/health && echo "" || {
+              echo "✗ 健康检查失败"
+              sudo journalctl -u lumen -n 30 --no-pager
+              exit 1
+            }
+          else
+            echo "✗ lumen 启动失败"
+            sudo journalctl -u lumen -n 30 --no-pager
+            exit 1
+          fi
+          REMOTE
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "## ✅ 部署完成" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- 目标: \`${REMOTE_HOST}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 中继: \`https://${RELAY_HOST}/v1\`（自签 CA 校验）" >> $GITHUB_STEP_SUMMARY
+          echo "- 提交: \`${GITHUB_SHA:0:7}\`" >> $GITHUB_STEP_SUMMARY

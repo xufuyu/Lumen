@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import VoiceRecordButton from './VoiceRecordButton.vue'
+import { polishAsrText } from '../api/client'
 
 const props = defineProps<{ disabled?: boolean }>()
 const emit = defineEmits<{
@@ -13,12 +14,17 @@ const textarea = ref<HTMLTextAreaElement | null>(null)
 const menuRoot = ref<HTMLElement | null>(null)
 const showPrefixMenu = ref(false)
 
-// Streaming ASR state
+// Streaming ASR state — emotion 静默采集（不显示 UI，仅提交时带上）
 const streamPrefix = ref('')
-const stashPreview = ref('')     // 可纠错尾部预览（灰色）
-const detectedEmotion = ref('')  // 声学情绪（7 类之一或空）
+const detectedEmotion = ref('')
 const isStreaming = ref(false)
 const submitType = ref<'text' | 'voice'>('text')
+
+// 隐式润色：ASR 完成后异步请 LLM 修同音字，跟用户手动编辑抢时间
+// 用递增 token 标识"最新一次录音"，防止旧请求覆盖新录音的内容
+let polishToken = 0
+let polishAbort: AbortController | null = null
+const POLISH_TIMEOUT_MS = 3500  // 超时放弃
 
 const prompts = [
   { label: '刚做完', prefix: '我刚做完：', icon: 'fa-check', color: 'text-emerald-500' },
@@ -27,18 +33,6 @@ const prompts = [
   { label: '感受', prefix: '我的感受：', icon: 'fa-heart', color: 'text-rose-500' },
   { label: '问一下', prefix: '问一下：', icon: 'fa-comment-dots', color: 'text-sky-500' },
 ]
-
-// 情绪 → 中文标签 + 颜色（浅色 chip）
-const EMOTION_META: Record<string, { label: string; cls: string; icon: string }> = {
-  neutral:   { label: '平和',   cls: 'bg-stone-100 text-stone-500',   icon: 'fa-face-meh' },
-  happy:     { label: '愉悦',   cls: 'bg-amber-50 text-amber-600',    icon: 'fa-face-smile' },
-  sad:       { label: '低落',   cls: 'bg-sky-50 text-sky-600',        icon: 'fa-face-frown' },
-  angry:     { label: '烦躁',   cls: 'bg-rose-50 text-rose-600',      icon: 'fa-face-angry' },
-  fearful:   { label: '焦虑',   cls: 'bg-indigo-50 text-indigo-600',  icon: 'fa-face-flushed' },
-  disgusted: { label: '厌烦',   cls: 'bg-lime-50 text-lime-700',      icon: 'fa-face-tired' },
-  surprised: { label: '惊讶',   cls: 'bg-fuchsia-50 text-fuchsia-600', icon: 'fa-face-surprise' },
-}
-const emotionMeta = computed(() => detectedEmotion.value ? EMOTION_META[detectedEmotion.value] : null)
 
 // 问答意图检测：不依赖标点。
 const askKeywordAtStart = /^(问一下|查一下|问下|查下|我想知道|想知道|请问|帮我查|帮我看看|看看|告诉我|是不是|能不能|可不可以|要不要|有没有|该不该|要怎么|怎么|如何|为什么|为啥|哪里|哪个|哪些|什么时候|什么|谁|是否|多少|几个|几天|多久)/
@@ -59,44 +53,91 @@ function focusWithPrefix(prefix: string) {
   })
 }
 
-function onDelta(text: string, stash: string, emotion: string) {
-  if (!isStreaming.value) {
-    streamPrefix.value = content.value
-    isStreaming.value = true
+function onStarted() {
+  // 新一轮录音就绪 —— 无论上一次是否正常结束，都在此刻重新拿快照
+  // 修复：上一次因 error/keepalive 断线导致 onCompleted 未触发时，
+  //       isStreaming/streamPrefix 会卡在旧状态，下次录音就会覆盖当前文本
+  streamPrefix.value = content.value
+  isStreaming.value = true
+  submitType.value = 'voice'
+
+  // 取消上一次未完成的润色请求 —— 结果不能再回来覆盖新一轮内容
+  if (polishAbort) {
+    try { polishAbort.abort() } catch { /* */ }
+    polishAbort = null
   }
+  polishToken++
+}
+
+function onDelta(text: string, stash: string, emotion: string) {
+  // onStarted 已经把 isStreaming 置 true 并抓取了 streamPrefix，这里直接更新即可
   submitType.value = 'voice'
   if (emotion) detectedEmotion.value = emotion
 
-  // text = 已确认累计（整体替换），stash = 可纠错尾部（不落 textarea，另处预览）
-  const confirmed = streamPrefix.value
-    ? (text ? streamPrefix.value + ' ' + text : streamPrefix.value)
-    : text
-  content.value = confirmed
-  stashPreview.value = stash
+  // text = 已确认累计（含前文纠错，整体替换）
+  // stash = 可纠错尾部（会被下次 delta 改写）
+  // 用户要求直接拼进 textarea，让实时输入所见即所得
+  const combined = text + stash
+  content.value = streamPrefix.value
+    ? (combined ? streamPrefix.value + ' ' + combined : streamPrefix.value)
+    : combined
 }
 
 function onCompleted(text: string, emotion: string) {
+  // done 到达 —— 单次 utterance 结束（VAD 自动 or 用户 stop）
   if (text) {
     submitType.value = 'voice'
     content.value = streamPrefix.value ? streamPrefix.value + ' ' + text : text
   }
   if (emotion) detectedEmotion.value = emotion
-  stashPreview.value = ''
   isStreaming.value = false
   streamPrefix.value = ''
   nextTick(() => textarea.value?.focus())
+
+  // 隐式润色 pass：短文本无必要（噪音大、修正也不明显）
+  if (text && text.trim().length >= 4) {
+    polishAsrOnce(text, content.value)
+  }
+}
+
+async function polishAsrOnce(originalText: string, baseline: string) {
+  // 取消上一个还在飞的润色（保守：即使 token 已换，也主动 abort 免得占连接）
+  if (polishAbort) {
+    try { polishAbort.abort() } catch { /* */ }
+  }
+  const myToken = ++polishToken
+  const controller = new AbortController()
+  polishAbort = controller
+  const timeoutId = setTimeout(() => controller.abort(), POLISH_TIMEOUT_MS)
+
+  try {
+    const res = await polishAsrText(originalText, controller.signal)
+
+    // 三道闸：过期 / 无变化 / 用户已改
+    if (myToken !== polishToken) return
+    if (!res.changed) return
+    if (content.value !== baseline) return
+
+    // 尾部替换：baseline 结构是 (streamPrefix + ' ' + originalText) 或纯 originalText
+    // 用 endsWith + slice 找到 tail 起点，只替换 tail
+    const tailStart = baseline.length - originalText.length
+    if (tailStart >= 0 && baseline.slice(tailStart) === originalText) {
+      content.value = baseline.slice(0, tailStart) + res.polished
+    }
+  } catch {
+    // 超时 / 网络 / 后端错都静默降级，用户始终看到 ASR 原文
+  } finally {
+    clearTimeout(timeoutId)
+    if (polishAbort === controller) polishAbort = null
+  }
 }
 
 function onManualInput() {
   if (!isStreaming.value) {
     submitType.value = 'text'
-    // 手动输入时清掉情绪徽标（不是语音的了）
+    // 手动编辑后清掉声学情绪，避免把上一次语音的情绪错误关联到新文字
     if (detectedEmotion.value) detectedEmotion.value = ''
   }
-}
-
-function clearEmotion() {
-  detectedEmotion.value = ''
 }
 
 async function handleSubmit() {
@@ -105,7 +146,6 @@ async function handleSubmit() {
   emit('submit', text, submitType.value, detectedEmotion.value)
   content.value = ''
   detectedEmotion.value = ''
-  stashPreview.value = ''
   submitType.value = 'text'
   await nextTick()
   textarea.value?.focus()
@@ -117,7 +157,6 @@ async function handleAsk() {
   emit('ask', text, detectedEmotion.value)
   content.value = ''
   detectedEmotion.value = ''
-  stashPreview.value = ''
   submitType.value = 'text'
   await nextTick()
   textarea.value?.focus()
@@ -128,7 +167,6 @@ async function handleEnter() {
   else await handleSubmit()
 }
 
-// 点击菜单外部关闭
 function onDocClick(e: MouseEvent) {
   if (menuRoot.value && !menuRoot.value.contains(e.target as Node)) {
     showPrefixMenu.value = false
@@ -151,29 +189,11 @@ onUnmounted(() => document.removeEventListener('click', onDocClick, true))
         :disabled="disabled"
         class="w-full resize-none text-base sm:text-lg text-stone-800 placeholder:text-stone-300 bg-transparent border-none focus:outline-none leading-relaxed disabled:opacity-50"
       ></textarea>
-
-      <!-- stash 可纠错尾部预览 - 灰色斜体，实时更新 -->
-      <Transition name="stash-fade">
-        <div v-if="stashPreview" class="text-sm text-stone-400 italic leading-snug -mt-1">
-          <i class="fa-solid fa-wave-square text-[10px] text-violet-400 mr-1"></i>{{ stashPreview }}
-        </div>
-      </Transition>
     </div>
 
     <div class="flex items-center justify-between gap-2">
-      <div class="flex items-center gap-1.5 min-w-0 flex-wrap">
-        <VoiceRecordButton @delta="onDelta" @completed="onCompleted" />
-
-        <!-- 声学情绪徽标 - 点击可清除 -->
-        <Transition name="emotion-pop">
-          <button v-if="emotionMeta" type="button" @click="clearEmotion"
-            :class="['shrink-0 flex items-center gap-1 text-[11px] rounded-full px-2 py-0.5 transition-all active:scale-95', emotionMeta.cls]"
-            :title="`声学情绪：${emotionMeta.label}（会随记录一起发送，点击清除）`">
-            <i :class="['fa-solid text-[10px]', emotionMeta.icon]"></i>
-            <span class="font-medium">{{ emotionMeta.label }}</span>
-            <i class="fa-solid fa-xmark text-[9px] opacity-40 ml-0.5"></i>
-          </button>
-        </Transition>
+      <div class="flex items-center gap-1.5 min-w-0">
+        <VoiceRecordButton @started="onStarted" @delta="onDelta" @completed="onCompleted" />
 
         <!-- Prefix menu (collapsed) -->
         <div ref="menuRoot" class="relative">
@@ -221,11 +241,4 @@ onUnmounted(() => document.removeEventListener('click', onDocClick, true))
 .prefix-pop-enter-active { transition: all 0.15s ease; transform-origin: bottom left; }
 .prefix-pop-leave-active { transition: all 0.1s ease; transform-origin: bottom left; }
 .prefix-pop-enter-from, .prefix-pop-leave-to { opacity: 0; transform: scale(0.92) translateY(4px); }
-
-.stash-fade-enter-active, .stash-fade-leave-active { transition: opacity 0.15s ease; }
-.stash-fade-enter-from, .stash-fade-leave-to { opacity: 0; }
-
-.emotion-pop-enter-active { transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
-.emotion-pop-leave-active { transition: all 0.15s ease; }
-.emotion-pop-enter-from, .emotion-pop-leave-to { opacity: 0; transform: scale(0.7); }
 </style>

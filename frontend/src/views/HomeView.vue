@@ -31,12 +31,6 @@ const showStatusDetail = ref(false)
 // 后台处理状态：显示一个不阻塞的"整理中"角标
 const processing = ref(false)
 
-// 声学情绪 → 中文短标签（用于 toast）
-const EMO_LABEL: Record<string, string> = {
-  neutral: '平和', happy: '愉悦', sad: '低落', angry: '烦躁',
-  fearful: '焦虑', disgusted: '厌烦', surprised: '惊讶',
-}
-
 // 问答：内联展示，与记录共用输入框
 interface QAExchange { id: number; question: string; answer?: string; sources?: QueryResponse['sources']; disclaimer?: string | null; loading: boolean }
 const qaLog = ref<QAExchange[]>([])
@@ -98,13 +92,9 @@ async function handleRefreshMood() {
 async function handleSubmit(content: string, type: string = 'text', voiceEmotion: string = '') {
   submitting.value = true
   try {
+    // voiceEmotion 静默传给后端参与 Mood 融合，不告诉用户识别到什么情绪
     await createRecord(content, type, voiceEmotion || undefined)
-    if (voiceEmotion) {
-      const emoLabel = EMO_LABEL[voiceEmotion] || voiceEmotion
-      showToast('success', `已记录（语气：${emoLabel}），后台整理中…`)
-    } else {
-      showToast('success', '已记录，正在后台整理…')
-    }
+    showToast('success', '已记录，正在后台整理…')
     // 快速刷新列表让新记录立刻显示（此时状态是 unprocessed）
     loadAll()
   } catch (e: unknown) {
@@ -123,11 +113,12 @@ async function handleSubmit(content: string, type: string = 'text', voiceEmotion
     }
     await loadAll()
     // 只在有实质产出时才提示，避免噪音
-    if (procResult.tasks_created || procResult.events_created) {
+    if (procResult.tasks_created || procResult.events_created || procResult.tasks_updated) {
       const bits: string[] = []
       if (procResult.tasks_created) bits.push(`${procResult.tasks_created} 项待办`)
+      if (procResult.tasks_updated) bits.push(`${procResult.tasks_updated} 项任务更新`)
       if (procResult.events_created) bits.push(`${procResult.events_created} 个事件`)
-      showToast('success', `整理完成 · 新增 ${bits.join(' · ')}`)
+      if (bits.length > 0) showToast('success', `整理完成 · ${bits.join(' · ')}`)
     }
   } catch (e: unknown) {
     showToast('error', `后台整理失败：${e instanceof Error ? e.message : '未知错误'}`)
@@ -328,14 +319,15 @@ onMounted(async () => {
 
     <!-- ===== Context (above input) ===== -->
     <section v-if="context && context.id !== 0">
-      <div class="bg-gradient-to-r from-sky-50/80 to-violet-50/30 rounded-2xl border border-sky-100/50 px-4 py-3">
-        <div class="flex items-center gap-2 mb-1">
-          <i class="fa-solid fa-location-dot text-sky-400 text-sm"></i>
-          <span class="text-xs font-semibold text-stone-500">我正在做什么？</span>
-          <button @click="handleRefreshContext()" class="ml-auto text-[10px] text-violet-400 hover:text-violet-600">
-            <i :class="['fa-solid mr-0.5', contextLoading ? 'fa-spinner animate-spin' : 'fa-arrows-rotate']"></i>刷新
-          </button>
-        </div>
+      <div class="flex items-center justify-between mb-2.5">
+        <h2 class="text-sm font-bold text-stone-700">
+          <i class="fa-solid fa-location-dot mr-1.5 text-violet-400"></i>我正在做什么？
+        </h2>
+        <button @click="handleRefreshContext()" class="text-xs text-violet-500 font-medium">
+          <i :class="['fa-solid mr-1', contextLoading ? 'fa-spinner animate-spin' : 'fa-arrows-rotate']"></i>刷新
+        </button>
+      </div>
+      <div class="rounded-xl bg-stone-50 px-4 py-3">
         <p class="text-sm text-stone-600 leading-relaxed line-clamp-3">{{ context.summary }}</p>
       </div>
     </section>

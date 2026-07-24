@@ -21,7 +21,7 @@ const currentTitle = computed(() => {
 </script>
 
 <template>
-  <div class="h-dvh flex flex-col max-w-lg md:max-w-2xl xl:max-w-5xl mx-auto bg-white lg:border-x border-stone-100 shadow-lg overflow-hidden">
+  <div class="h-dvh flex flex-col max-w-lg md:max-w-2xl xl:max-w-none mx-auto bg-white lg:border-x border-stone-100 shadow-lg overflow-hidden">
 
     <!-- Header -->
     <header class="shrink-0 z-10 bg-white/95 backdrop-blur border-b border-stone-100 px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between">

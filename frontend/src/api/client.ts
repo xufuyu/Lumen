@@ -12,7 +12,6 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   if (res.status === 204) return undefined as T
   return res.json()
 }
-
 // ── Records ──
 
 export interface RecordOut {
@@ -59,6 +58,19 @@ export function updateRecord(id: number, data: { content?: string; status?: stri
 
 export function deleteRecord(id: number) {
   return request<void>(`/records/${id}`, { method: 'DELETE' })
+}
+
+// 隐式润色：ASR 结束后调用，赢过用户手动编辑就自动替换
+export interface PolishResponse {
+  polished: string
+  changed: boolean
+}
+export function polishAsrText(text: string, signal?: AbortSignal) {
+  return request<PolishResponse>('/records/polish', {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+    signal,
+  })
 }
 
 // ── Timeline / Events ──

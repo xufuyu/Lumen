@@ -77,6 +77,18 @@ class RecordList(BaseModel):
     page_size: int
 
 
+# ── ASR 润色 ────────────────────────────────────────────────────────────────
+
+
+class PolishRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=2000)
+
+
+class PolishResponse(BaseModel):
+    polished: str
+    changed: bool  # 与原文是否不同（方便前端决定是否替换）
+
+
 # ── Event ───────────────────────────────────────────────────────────────────
 
 

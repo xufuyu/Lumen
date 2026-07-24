@@ -2,12 +2,12 @@
 import { ref, onUnmounted } from 'vue'
 
 const emit = defineEmits<{
+  // 新一轮录音真正开始（麦克风+WS 均就绪）—— RecordInput 用它复位 streaming 状态
+  started: []
   // text: 已确认累计文本（整体替换）；stash: 尾部可纠错预览；emotion: 声学情绪（可空）
   delta: [text: string, stash: string, emotion: string]
-  // 最终文本 + 最终情绪
+  // 最终文本 + 最终情绪 —— 收到即视为本次录音结束（VAD 自动 or 用户 stop 均触发）
   completed: [text: string, emotion: string]
-  // VAD 反馈（前端可选做视觉指示）
-  vad: [phase: 'started' | 'stopped']
 }>()
 
 const state = ref<'idle' | 'connecting' | 'recording'>('idle')
@@ -59,36 +59,39 @@ function handleWsMessage(e: MessageEvent) {
         break
 
       case 'done':
-        // 最终结果 + 情绪
+        // 单次 utterance 结束：VAD 自动或用户 stop 都会触发
+        // 无论是哪种，都要停麦、关 ws、置 idle，避免"以为还在录"
         emit('completed', msg.text || '', msg.emotion || '')
+        cleanupAudio()
         closeWs()
         state.value = 'idle'
         break
 
-      case 'vad_speech_started':
-        emit('vad', 'started')
-        break
-
-      case 'vad_speech_stopped':
-        emit('vad', 'stopped')
-        break
-
       case 'error':
         error.value = msg.message || '语音识别错误'
+        // 出错也算一次结束 —— 通知父组件复位状态，别把下一次录音的文本覆盖当前输入
+        emit('completed', '', '')
+        cleanupAudio()
+        closeWs()
+        state.value = 'idle'
         break
     }
   } catch { /* 非 JSON 消息忽略 */ }
 }
 
 function handleWsClose() {
-  // 只在录音中意外断开时才切 idle，正常 stop 已由 stop() 切了
-  if (state.value === 'recording') {
+  // 未预期的关闭（比如后端断线）— 通知父组件复位，别让下次录音顶掉当前文字
+  if (state.value === 'recording' || state.value === 'connecting') {
+    emit('completed', '', '')
+    cleanupAudio()
     state.value = 'idle'
   }
 }
 
 function handleWsError() {
   error.value = '语音服务连接失败'
+  emit('completed', '', '')
+  cleanupAudio()
   closeWs()
   state.value = 'idle'
 }
@@ -155,9 +158,9 @@ async function start() {
     ws.onerror = handleWsError
 
     // 3. 启动音频采集 → 二进制帧发送
-    // buffer=2048 samples ≈ 46ms@44.1kHz / 43ms@48kHz — 平衡实时性与消息频率
+    // buffer=1024 samples ≈ 21ms@48kHz — 更小的 buffer 降低采集延迟，实时输入更跟手
     sourceNode = audioCtx.createMediaStreamSource(stream)
-    processor = audioCtx.createScriptProcessor(2048, 1, 1)
+    processor = audioCtx.createScriptProcessor(1024, 1, 1)
 
     processor.onaudioprocess = (e) => {
       const samples = new Float32Array(e.inputBuffer.getChannelData(0))
@@ -175,6 +178,8 @@ async function start() {
     processor.connect(gainNode)
     gainNode.connect(audioCtx.destination)
     state.value = 'recording'
+    // 通知父组件"新一轮录音就绪"—— 让它复位 streaming 状态、重新捕获 streamPrefix
+    emit('started')
 
   } catch (e: unknown) {
     cleanup()
@@ -190,6 +195,7 @@ async function start() {
 // ── 停止录音 → 发送 stop → 等待二遍完成 ──
 
 function stop() {
+  // 立即停麦，让用户看到按钮立刻变 idle —— 不能等 done 才停，否则录音继续流
   cleanupAudio()
 
   if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -197,11 +203,10 @@ function stop() {
     return
   }
 
-  // 先更新 UI，让用户知道点击已生效
   state.value = 'idle'
-  // 发送 stop 信号，触发服务端二遍识别
+  // 发送 stop 信号，触发服务端 commit + 上游 completed
+  // ws 保留至 done 消息回来，由 handleWsMessage 关闭
   ws.send(JSON.stringify({ type: 'stop' }))
-  // 不立即关闭 ws — 等待 done 消息后由 handleWsMessage 关闭
 }
 
 function toggle() {
