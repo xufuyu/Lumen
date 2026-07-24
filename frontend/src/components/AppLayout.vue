@@ -3,15 +3,18 @@ import { useRouter, useRoute } from 'vue-router'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ref } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { setLocale, availableLocales } from '../i18n'
-import { getUserId } from '../user'
-import { mergeUserData } from '../api/client'
+import { getUserId, setUserId } from '../user'
+import { connectSync, disconnectSync } from '../sync'
 
 const { t, locale } = useI18n()
 const showSettings = ref(false)
-const settingsSaving = ref(false)
 const settingsMsg = ref('')
 const settingsErr = ref(false)
+
+onMounted(connectSync)
+onUnmounted(disconnectSync)
 const router = useRouter()
 const route = useRoute()
 
@@ -36,26 +39,35 @@ function switchLang() {
   setLocale(locale.value === 'zh-CN' ? 'en' : 'zh-CN')
 }
 
-async function handleMerge(newUid: string) {
+async function copyUserId() {
+  try {
+    await navigator.clipboard.writeText(getUserId())
+    settingsMsg.value = t('settings.copied')
+    settingsErr.value = false
+  } catch {
+    // Fallback for non-HTTPS contexts
+    const ta = document.createElement('textarea')
+    ta.value = getUserId()
+    ta.style.position = 'fixed'; ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select(); document.execCommand('copy')
+    document.body.removeChild(ta)
+    settingsMsg.value = t('settings.copied')
+    settingsErr.value = false
+  }
+}
+
+function handleSwitchId(newUid: string) {
   const oldUid = getUserId()
   if (newUid === oldUid) {
     settingsMsg.value = t('settings.sameId')
     settingsErr.value = true
     return
   }
-  settingsSaving.value = true
-  settingsMsg.value = ''
-  try {
-    const res = await mergeUserData(newUid)
-    settingsMsg.value = t('settings.merged', { count: res.merged, uid: newUid })
-    settingsErr.value = false
-    setTimeout(() => { location.reload() }, 2000)
-  } catch (e: unknown) {
-    settingsMsg.value = e instanceof Error ? e.message : 'Merge failed'
-    settingsErr.value = true
-  } finally {
-    settingsSaving.value = false
-  }
+  setUserId(newUid)
+  settingsMsg.value = t('settings.switched', { uid: newUid })
+  settingsErr.value = false
+  setTimeout(() => { location.reload() }, 1500)
 }
 </script>
 
@@ -144,7 +156,7 @@ async function handleMerge(newUid: string) {
             <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wide mb-1.5">{{ t('settings.uidLabel') }}</label>
             <div class="flex items-center gap-2 mb-3">
               <code class="flex-1 bg-stone-50 rounded-lg px-3 py-2 text-xs text-stone-600 font-mono break-all select-all">{{ getUserId() }}</code>
-              <button @click="navigator.clipboard.writeText(getUserId()); settingsMsg = t('settings.copied'); settingsErr = false"
+              <button @click="copyUserId()"
                 class="shrink-0 text-xs text-violet-500 hover:text-violet-700 font-medium px-3 py-2 rounded-lg hover:bg-violet-50 transition-colors">
                 <i class="fa-solid fa-copy mr-1"></i>{{ t('settings.copy') }}
               </button>
@@ -153,14 +165,12 @@ async function handleMerge(newUid: string) {
 
             <!-- Change ID (merge) -->
             <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wide mb-1.5">{{ t('settings.changeLabel') }}</label>
-            <form @submit.prevent="(e) => { const v = (e.target as any).uid.value.trim(); if (v) handleMerge(v) }" class="flex gap-2 mb-2">
+            <form @submit.prevent="(e) => { const v = (e.target as any).uid.value.trim(); if (v) handleSwitchId(v) }" class="flex gap-2 mb-2">
               <input name="uid" type="text" :placeholder="t('settings.placeholder')"
                 class="flex-1 text-xs bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 focus:outline-none focus:border-violet-400"
                 maxlength="64" pattern="[a-zA-Z0-9_-]+" />
-              <button type="submit" :disabled="settingsSaving"
-                class="text-xs bg-violet-500 text-white rounded-lg px-4 py-2 font-medium hover:bg-violet-600 disabled:opacity-50 transition-colors">
-                <i v-if="settingsSaving" class="fa-solid fa-spinner animate-spin mr-1"></i>{{ t('settings.save') }}
-              </button>
+              <button type="submit"
+                class="text-xs bg-violet-500 text-white rounded-lg px-4 py-2 font-medium hover:bg-violet-600 transition-colors">{{ t('settings.save') }}</button>
             </form>
             <p class="text-[10px] text-stone-400 mb-2">{{ t('settings.changeTip') }}</p>
 

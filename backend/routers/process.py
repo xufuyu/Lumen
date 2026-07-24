@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import current_user_id, get_db
+from routers.sync import notify_user
 from schemas import ProcessResponse
 from services.processor import process_records
 
@@ -19,6 +20,7 @@ async def trigger_processing(db: AsyncSession = Depends(get_db), uid: str = Depe
     """手动触发处理管线，处理所有未处理的记录。"""
     try:
         result = await process_records(db, uid)
+        await notify_user(uid)
         return ProcessResponse(**result)
     except Exception as e:
         logger.exception("处理管线失败")

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import current_user_id, get_db
 from models import Record, RecordEvent, RecordTask
+from routers.sync import notify_user
 from schemas import (
     PolishRequest, PolishResponse,
     RecordCreate, RecordList, RecordOut, RecordUpdate,
@@ -68,6 +69,7 @@ async def create_record(body: RecordCreate, db: AsyncSession = Depends(get_db), 
     db.add(record)
     await db.commit()
     await db.refresh(record)
+    await notify_user(uid)
     return await _to_out(record, db)
 
 
@@ -129,6 +131,7 @@ async def update_record(
 
     await db.commit()
     await db.refresh(record)
+    await notify_user(uid)
     return await _to_out(record, db)
 
 
@@ -142,6 +145,7 @@ async def delete_record(record_id: int, db: AsyncSession = Depends(get_db), uid:
 
     record.status = "archived"
     await db.commit()
+    await notify_user(uid)
     return None
 
 

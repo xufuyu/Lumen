@@ -14,6 +14,7 @@ const emit = defineEmits<{
 const content = ref('')
 const textarea = ref<HTMLTextAreaElement | null>(null)
 const menuRoot = ref<HTMLElement | null>(null)
+const voiceRef = ref<InstanceType<typeof VoiceRecordButton> | null>(null)
 const showPrefixMenu = ref(false)
 
 // Streaming ASR state — emotion 静默采集（不显示 UI，仅提交时带上）
@@ -21,6 +22,7 @@ const streamPrefix = ref('')
 const detectedEmotion = ref('')
 const isStreaming = ref(false)
 const submitType = ref<'text' | 'voice'>('text')
+const pendingSubmit = ref(false)  // 录音中用户点击发送 → 停录后自动提交
 
 // 隐式润色：ASR 完成后异步请 LLM 修同音字，跟用户手动编辑抢时间
 // 用递增 token 标识"最新一次录音"，防止旧请求覆盖新录音的内容
@@ -91,6 +93,14 @@ function onCompleted(text: string, emotion: string) {
   if (emotion) detectedEmotion.value = emotion
   isStreaming.value = false
   streamPrefix.value = ''
+
+  // 用户录音中点击了发送按钮 → 停录后自动提交
+  if (pendingSubmit.value) {
+    pendingSubmit.value = false
+    nextTick(() => handleEnter())
+    return
+  }
+
   nextTick(() => textarea.value?.focus())
 
   // 隐式润色 pass：短文本无必要（噪音大、修正也不明显）
@@ -166,6 +176,12 @@ async function handleAsk() {
 }
 
 async function handleEnter() {
+  // 录音中：自动停止录音，onCompleted 会重新调用本函数
+  if (isStreaming.value) {
+    pendingSubmit.value = true
+    voiceRef.value?.stopRecording()
+    return
+  }
   if (looksLikeQuestion.value) await handleAsk()
   else await handleSubmit()
 }
@@ -196,7 +212,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick, true))
 
     <div class="flex items-center justify-between gap-2">
       <div class="flex items-center gap-1.5 min-w-0">
-        <VoiceRecordButton @started="onStarted" @delta="onDelta" @completed="onCompleted" />
+        <VoiceRecordButton ref="voiceRef" @started="onStarted" @delta="onDelta" @completed="onCompleted" />
 
         <!-- Prefix menu (collapsed) -->
         <div ref="menuRoot" class="relative">
@@ -223,15 +239,15 @@ onUnmounted(() => document.removeEventListener('click', onDocClick, true))
 
       <button
         @click="handleEnter"
-        :disabled="!content.trim() || disabled"
+        :disabled="(!content.trim() && !isStreaming) || disabled"
         :class="['shrink-0 rounded-2xl px-5 sm:px-6 py-2.5 text-sm font-semibold transition-all active:scale-95 shadow-sm disabled:bg-stone-200 disabled:text-stone-400 disabled:shadow-none text-white',
-          looksLikeQuestion
-            ? 'bg-sky-500 active:bg-sky-600 shadow-sky-200'
-            : 'bg-violet-500 active:bg-violet-600 shadow-violet-200']"
-        :title="looksLikeQuestion ? t('input.askButton') : t('input.record')"
+          isStreaming ? 'bg-rose-500 active:bg-rose-600 shadow-rose-200' :
+          looksLikeQuestion ? 'bg-sky-500 active:bg-sky-600 shadow-sky-200' :
+          'bg-violet-500 active:bg-violet-600 shadow-violet-200']"
+        :title="t('input.send')"
       >
-        <i :class="['fa-solid mr-1 text-xs', looksLikeQuestion ? 'fa-comment-dots' : 'fa-check']"></i>
-        {{ disabled ? '…' : looksLikeQuestion ? '问一下' : '记录' }}
+        <i :class="['fa-solid mr-1 text-xs', isStreaming ? 'fa-stop' : looksLikeQuestion ? 'fa-comment-dots' : 'fa-paper-plane']"></i>
+        {{ disabled ? '…' : isStreaming ? t('input.stopAndSend') : t('input.send') }}
       </button>
     </div>
   </div>

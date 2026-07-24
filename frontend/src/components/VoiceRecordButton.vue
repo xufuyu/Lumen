@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -70,7 +70,9 @@ function handleWsMessage(e: MessageEvent) {
         break
 
       case 'error':
-        error.value = msg.message || t('input.micError')
+        error.value = (msg.message && !msg.message.includes('commit') && !msg.message.includes('buffer'))
+          ? msg.message
+          : t('input.micError')
         // 出错也算一次结束 —— 通知父组件复位状态，别把下一次录音的文本覆盖当前输入
         emit('completed', '', '')
         cleanupAudio()
@@ -229,6 +231,12 @@ function cleanup() {
   cleanupAudio()
   closeWs()
 }
+
+function stopRecording() {
+  if (state.value === 'recording') stop()
+}
+
+defineExpose({ stopRecording, isRecording: computed(() => state.value === 'recording') })
 
 onUnmounted(cleanup)
 </script>

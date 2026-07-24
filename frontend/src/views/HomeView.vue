@@ -190,14 +190,20 @@ const moodColor = computed(() => {
   return 'text-emerald-500'
 })
 
+const syncHandler = () => { loadAll() }
+
 onMounted(async () => {
   await loadAll()
+  window.addEventListener('lumen:refresh', syncHandler)
   if (!sessionStorage.getItem('advx-welcomed')) {
     sessionStorage.setItem('advx-welcomed', '1')
     showToast('info', hasContent.value
       ? t('home.welcomeBack')
       : t('home.welcome'))
   }
+})
+onUnmounted(() => {
+  window.removeEventListener('lumen:refresh', syncHandler)
 })
 </script>
 

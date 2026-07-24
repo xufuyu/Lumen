@@ -41,10 +41,9 @@ DEMO_MSG_EN = (
 # Progressive tiers: (threshold, window_sec, retry_after_sec)
 # Each tier applies a stricter limit
 PROGRESSIVE_TIERS = [
-    (120,  60, 5),    # Tier 0: 120 req/min → 5s cooldown
-    (200,  120, 15),  # Tier 1: 200 req/2min → 15s
-    (300,  300, 60),  # Tier 2: 300 req/5min → 60s
-    (500,  600, 300), # Tier 3: 500 req/10min → 5min
+    (600,  60,  3),    # Tier 0: 600 req/min → 3s cooldown (~10req/s per user)
+    (3000, 300, 15),   # Tier 1: 3000 req/5min → 15s
+    (6000, 600, 60),   # Tier 2: 6000 req/10min → 60s
 ]
 
 
@@ -101,27 +100,27 @@ def make_rate_limiter(max_requests: int, window_sec: float, key: str) -> Callabl
 
 # Endpoints that trigger expensive AI calls → strict limits
 AI_RATE_LIMITS = {
-    ("POST", "/api/process"):       (10, 60, "process"),     # 10/min
-    ("POST", "/api/query"):         (20, 60, "query"),       # 20/min
-    ("POST", "/api/mood/generate"): (5,  60, "mood_gen"),    # 5/min
+    ("POST", "/api/process"):       (30, 60, "process"),     # 30/min
+    ("POST", "/api/query"):         (60, 60, "query"),       # 60/min
+    ("POST", "/api/mood/generate"): (15, 60, "mood_gen"),    # 15/min
 }
 
-# Mutation endpoints → moderate limits
+# Mutation endpoints
 MUTATION_RATE_LIMITS = {
-    ("POST",   "/api/records"):     (30, 60, "rec_create"),  # 30/min
-    ("PUT",    "/api/records"):     (30, 60, "rec_update"),  # 30/min
-    ("DELETE", "/api/records"):     (20, 60, "rec_delete"),  # 20/min
-    ("POST",   "/api/tasks"):       (20, 60, "task_create"), # 20/min
-    ("PUT",    "/api/tasks"):       (30, 60, "task_update"), # 30/min
-    ("DELETE", "/api/tasks"):       (20, 60, "task_delete"), # 20/min
-    ("PUT",    "/api/timeline"):    (20, 60, "event_update"),# 20/min
-    ("DELETE", "/api/timeline"):    (10, 60, "event_delete"),# 10/min
-    ("POST",   "/api/merge"):       (5,  60, "merge"),       # 5/min
-    ("POST",   "/api/user/merge"):  (3,  60, "user_merge"),  # 3/min
+    ("POST",   "/api/records"):     (120, 60, "rec_create"),  # 120/min
+    ("PUT",    "/api/records"):     (120, 60, "rec_update"),
+    ("DELETE", "/api/records"):     (60,  60, "rec_delete"),
+    ("POST",   "/api/tasks"):       (60,  60, "task_create"),
+    ("PUT",    "/api/tasks"):       (120, 60, "task_update"),
+    ("DELETE", "/api/tasks"):       (60,  60, "task_delete"),
+    ("PUT",    "/api/timeline"):    (60,  60, "event_update"),
+    ("DELETE", "/api/timeline"):    (30,  60, "event_delete"),
+    ("POST",   "/api/merge"):       (15,  60, "merge"),
+    ("POST",   "/api/user/merge"):  (10,  60, "user_merge"),
 }
 
-# Read-only endpoints → generous limits
-READ_LIMIT = (120, 60, "read")  # 120/min
+# Read-only endpoints
+READ_LIMIT = (600, 60, "read")  # 600/min
 
 
 class SecurityMiddleware(BaseHTTPMiddleware):

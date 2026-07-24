@@ -169,11 +169,18 @@ async def websocket_asr(frontend: WebSocket):
 
                 elif etype == "error":
                     err_info = evt.get("error", {})
-                    err_msg = (
-                        err_info.get("message", "语音识别错误")
+                    raw_msg = (
+                        err_info.get("message", "")
                         if isinstance(err_info, dict) else str(err_info)
                     )
                     logger.error(f"[ASR] 上游 error: {err_info}")
+                    # 将上游技术错误映射为用户友好提示
+                    if "commit" in raw_msg.lower() or "no invalid audio" in raw_msg.lower():
+                        err_msg = "未检测到有效语音，请确认麦克风正常并再次尝试。"
+                    elif "invalid" in raw_msg.lower():
+                        err_msg = "语音格式不支持，请重试。"
+                    else:
+                        err_msg = raw_msg or "语音识别服务异常，请稍后重试。"
                     try:
                         await frontend.send_json({"type": "error", "message": err_msg})
                     except Exception:
