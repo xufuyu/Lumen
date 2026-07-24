@@ -8,14 +8,34 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+pip-wheel-metadata/
+
+# Node
+node_modules/
+.npm/
+*.tsbuildinfo
 
 # 构建产物
 dist/
 dist-ssr/
+deploy/
+*.map
 
 # 运行时数据（数据库、日志等）
 data/*.db
 data/*.log
+*.log
+logs/
+
+# 缓存
+.cache/
+__pypackages__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.eslintcache
+*.egg
 
 # IDE
 .vscode/
@@ -23,3 +43,21 @@ data/*.log
 *.swp
 *.swo
 .DS_Store
+Thumbs.db
+
+# 系统临时文件
+*.tmp
+*.temp
+*~
+*.bak
+
+# 证书和密钥
+*.pem
+*.key
+*.crt
+*.p12
+
+# 压缩包
+*.zip
+*.tar.gz
+*.rar
