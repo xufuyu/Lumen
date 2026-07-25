@@ -1,0 +1,61 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: main
+nodes_managed: true
+exported_at: "2026-07-25T14:54:31Z"
+modules:
+    "":
+        dir_name: 拾光·Lumen 全栈项目根
+        title: 拾光·Lumen 全栈项目根
+        scope:
+            - README.md
+            - CONTRIBUTING.md
+            - ICLA.md
+            - RELAY.md
+            - .gitignore
+            - deploy.sh
+            - package-lock.json
+            - LICENSE
+        source_files: []
+        children:
+            - backend
+            - frontend
+        depends_on: []
+        related_to: []
+    backend:
+        dir_name: 拾光·Lumen 后端 API 服务
+        title: 拾光·Lumen 后端 API 服务
+        scope:
+            - backend/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: frontend/app_bootstrap
+    frontend:
+        dir_name: AdventureX 前端应用（Vue 3 + Vite）
+        title: AdventureX 前端应用（Vue 3 + Vite）
+        scope:
+            - frontend/
+        source_files: []
+        children:
+            - frontend/app_bootstrap
+        depends_on: []
+        related_to: []
+    frontend/app_bootstrap:
+        dir_name: 应用启动与全局初始化
+        title: 应用启动与全局初始化
+        scope:
+            - frontend/src/App.vue
+            - frontend/src/main.ts
+            - frontend/src/install.ts
+            - frontend/src/sync.ts
+            - frontend/src/user.ts
+            - frontend/src/env.d.ts
+            - frontend/src/style.css
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: backend

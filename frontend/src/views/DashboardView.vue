@@ -35,7 +35,7 @@ async function loadAll() {
   try {
     const [tk, ev, rc, ctx, m] = await Promise.all([
       listTasks({ status: 'pending,in_progress,done', sort: 'due_date' }),
-      listEvents({ limit: 20 }),
+      listEvents({ limit: 100 }),
       listRecords({ page_size: 10 }),
       getCurrentContext().catch(() => null),
       getLatestMood().catch(() => null),
@@ -163,6 +163,85 @@ const moodColor = computed(() => {
 
 function priorityDot(p: string): string {
   return p === 'high' ? 'bg-rose-400' : p === 'medium' ? 'bg-amber-400' : 'bg-stone-300'
+}
+
+// ── Month calendar ──────────────────────────────────────────────────────────
+// 周一开头的月历。标记三类信号：事件（紫）、截止任务（琥珀）、完成任务（绿）。
+const calCursor = ref(new Date())
+
+interface CalDay {
+  key: string
+  dayNum: number
+  inMonth: boolean
+  isToday: boolean
+  due: number
+  done: number
+  events: number
+}
+
+const monthLabel = computed(() =>
+  calCursor.value.toLocaleDateString(locale.value, { year: 'numeric', month: 'long' }),
+)
+
+// 2024-01-01 是周一，依次生成 7 个本地化的短星期名
+const weekdayLabels = computed(() =>
+  Array.from({ length: 7 }, (_, i) =>
+    new Date(2024, 0, 1 + i).toLocaleDateString(locale.value, { weekday: 'short' }),
+  ),
+)
+
+const calDays = computed<CalDay[]>(() => {
+  const y = calCursor.value.getFullYear()
+  const m = calCursor.value.getMonth()
+  // getDay() 周日=0 → 转换为周一开头的偏移
+  const startOffset = (new Date(y, m, 1).getDay() + 6) % 7
+  const daysInMonth = new Date(y, m + 1, 0).getDate()
+  const todayK = dayKey(new Date())
+
+  const dueMap = new Map<string, number>()
+  const doneMap = new Map<string, number>()
+  const evtMap = new Map<string, number>()
+  const bump = (map: Map<string, number>, k: string | null) => {
+    if (k) map.set(k, (map.get(k) ?? 0) + 1)
+  }
+  for (const t of tasks.value) {
+    bump(dueMap, dayKey(t.due_date))
+    bump(doneMap, dayKey(t.completed_at))
+  }
+  for (const e of events.value) {
+    bump(evtMap, dayKey(e.start_time || e.created_at))
+  }
+
+  const total = Math.ceil((startOffset + daysInMonth) / 7) * 7
+  const cells: CalDay[] = []
+  for (let i = 0; i < total; i++) {
+    const d = new Date(y, m, i - startOffset + 1)
+    const k = dayKey(d)!
+    cells.push({
+      key: k,
+      dayNum: d.getDate(),
+      inMonth: d.getMonth() === m,
+      isToday: k === todayK,
+      due: dueMap.get(k) ?? 0,
+      done: doneMap.get(k) ?? 0,
+      events: evtMap.get(k) ?? 0,
+    })
+  }
+  return cells
+})
+
+function shiftMonth(delta: number) {
+  calCursor.value = new Date(calCursor.value.getFullYear(), calCursor.value.getMonth() + delta, 1)
+}
+function backToToday() {
+  calCursor.value = new Date()
+}
+function calendarTip(d: CalDay): string {
+  const bits: string[] = []
+  if (d.events) bits.push(t('dashboard.tipEvent', { n: d.events }))
+  if (d.due) bits.push(t('dashboard.tipDue', { n: d.due }))
+  if (d.done) bits.push(t('dashboard.tipDone', { n: d.done }))
+  return bits.length ? `${d.key} · ${bits.join(' · ')}` : d.key
 }
 </script>
 
@@ -301,6 +380,46 @@ function priorityDot(p: string): string {
             </div>
             <span class="text-[10px] text-stone-400 w-6 text-right">{{ bar.count }}</span>
           </div>
+        </div>
+      </section>
+
+      <!-- Month calendar: full width -->
+      <section class="md:col-span-2 lg:col-span-12 bg-white rounded-2xl border border-stone-100 p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-xs font-bold text-stone-700"><i class="fa-regular fa-calendar mr-1.5 text-violet-400"></i>{{ t('dashboard.calendar') }}</h3>
+          <div class="flex items-center gap-1">
+            <button @click="shiftMonth(-1)" class="w-6 h-6 rounded-lg text-stone-400 hover:bg-stone-100 text-xs transition-colors">
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <button @click="backToToday" :title="t('dashboard.backToToday')"
+              class="text-[11px] font-semibold text-stone-600 hover:text-violet-500 min-w-[6.5rem] text-center transition-colors">
+              {{ monthLabel }}
+            </button>
+            <button @click="shiftMonth(1)" class="w-6 h-6 rounded-lg text-stone-400 hover:bg-stone-100 text-xs transition-colors">
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+          </div>
+        </div>
+        <div class="grid grid-cols-7 gap-1 text-center text-[10px] text-stone-400 mb-1">
+          <span v-for="w in weekdayLabels" :key="w" class="py-0.5">{{ w }}</span>
+        </div>
+        <div class="grid grid-cols-7 gap-1">
+          <div v-for="d in calDays" :key="d.key" :title="calendarTip(d)"
+            :class="['rounded-lg px-1 py-1.5 min-h-[2.75rem] flex flex-col items-center justify-start gap-1.5 border transition-colors',
+              d.isToday ? 'border-violet-300 bg-violet-50/60' : 'border-transparent hover:bg-stone-50',
+              d.inMonth ? '' : 'opacity-35']">
+            <span :class="['text-[11px] leading-none', d.isToday ? 'font-bold text-violet-600' : 'text-stone-500']">{{ d.dayNum }}</span>
+            <div class="flex items-center gap-1 h-1.5">
+              <span v-if="d.events" class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
+              <span v-if="d.due" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+              <span v-if="d.done" class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center gap-4 mt-3 text-[10px] text-stone-400">
+          <span><i class="fa-solid fa-circle text-violet-400 text-[6px] mr-1"></i>{{ t('dashboard.legendEvent') }}</span>
+          <span><i class="fa-solid fa-circle text-amber-400 text-[6px] mr-1"></i>{{ t('dashboard.legendDue') }}</span>
+          <span><i class="fa-solid fa-circle text-emerald-400 text-[6px] mr-1"></i>{{ t('dashboard.legendDone') }}</span>
         </div>
       </section>
 

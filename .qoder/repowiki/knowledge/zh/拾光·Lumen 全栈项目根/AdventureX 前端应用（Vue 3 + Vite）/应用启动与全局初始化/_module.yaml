@@ -1,0 +1,15 @@
+schema_version: 1
+module_path: frontend/app_bootstrap
+title: 应用启动与全局初始化
+scope:
+    - frontend/src/App.vue
+    - frontend/src/main.ts
+    - frontend/src/install.ts
+    - frontend/src/sync.ts
+    - frontend/src/user.ts
+    - frontend/src/env.d.ts
+    - frontend/src/style.css
+source_files: []
+depends_on: []
+related_to:
+    - path: backend
