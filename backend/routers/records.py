@@ -153,7 +153,7 @@ async def delete_record(record_id: int, db: AsyncSession = Depends(get_db), uid:
 
 
 @router.post("/polish", response_model=PolishResponse)
-async def polish_record(body: PolishRequest):
+async def polish_record(body: PolishRequest, uid: str = Depends(current_user_id)):
     """对 ASR 结果做保守的同音字修正。
 
     前端语义：录音完成后立刻调用；如果模型返回时 textarea 内容还没被用户编辑过，
@@ -166,7 +166,7 @@ async def polish_record(body: PolishRequest):
     """
     original = body.text
     try:
-        polished = (await polish_asr_text(original)).strip()
+        polished = (await polish_asr_text(original, uid)).strip()
         # 去掉可能的代码围栏 / 引号包装
         if polished.startswith("```"):
             polished = "\n".join(polished.split("\n")[1:-1]).strip()

@@ -27,12 +27,12 @@ def _get(d: dict, *keys: str, default=None):
 
 
 @router.post("/classify")
-async def classify_question(body: QueryRequest):
+async def classify_question(body: QueryRequest, uid: str = Depends(current_user_id)):
     """快速判断输入是否为询问（<500ms），前端据此决定是否显示"思考中"。"""
     text = body.question.strip()
     if not text:
         return {"is_question": False}
-    intent = await classify_intent(text)
+    intent = await classify_intent(text, uid)
     return {"is_question": intent == "question"}
 
 
@@ -62,7 +62,7 @@ async def ask_question_stream(
     async def event_generator():
         full_text = ""
         try:
-            async for chunk in answer_query_stream(question, context_json, lang):
+            async for chunk in answer_query_stream(question, context_json, lang, uid):
                 full_text += chunk
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
 
@@ -138,7 +138,7 @@ async def ask_question(
 
     # 3. 调用 LLM
     try:
-        raw = await answer_query(question, context_json, lang)
+        raw = await answer_query(question, context_json, lang, uid)
         data = json.loads(_clean_json(raw))
     except Exception as e:
         logger.exception("问答 LLM 调用失败")

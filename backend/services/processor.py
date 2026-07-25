@@ -193,7 +193,7 @@ async def process_records(db: AsyncSession, uid: str = "default", lang: str = "z
 
     try:
         # 生成时间线事件
-        timeline_raw = await generate_timeline(records_json, lang)
+        timeline_raw = await generate_timeline(records_json, lang, uid)
         events_data = _safe_json(timeline_raw)
 
         if isinstance(events_data, list):
@@ -217,7 +217,7 @@ async def process_records(db: AsyncSession, uid: str = "default", lang: str = "z
                 events_created += 1
 
         # 生成任务
-        tasks_raw = await generate_tasks(records_json, existing_tasks_json, lang)
+        tasks_raw = await generate_tasks(records_json, existing_tasks_json, lang, uid)
         tasks_data = _safe_json(tasks_raw)
 
         if isinstance(tasks_data, list):
@@ -503,7 +503,7 @@ async def _update_context(db: AsyncSession, uid: str = "default", lang: str = "z
         default=str,
     )
 
-    context_raw = await generate_context(events_json, tasks_json, voice_emo_summary, lang)
+    context_raw = await generate_context(events_json, tasks_json, voice_emo_summary, lang, uid)
     context_data = _safe_json(context_raw)
 
     context = Context(user_id=uid, 

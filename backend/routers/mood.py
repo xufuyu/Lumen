@@ -95,7 +95,7 @@ async def generate_mood_snapshot(
         voice_emo_summary = f"{sum(emo_counts.values())} 条语音（共 {len(records)} 条记录）：" + " / ".join(parts)
 
     try:
-        raw = await generate_mood(records_json, voice_emo_summary, lang)
+        raw = await generate_mood(records_json, voice_emo_summary, lang, uid)
         data = _safe_json(raw)
     except Exception:
         logger.exception("情绪指数 LLM 调用失败")

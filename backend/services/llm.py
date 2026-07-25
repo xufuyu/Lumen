@@ -108,10 +108,13 @@ async def chat(
     temperature: float = 0.1,
     max_tokens: int = 2048,
     response_format: dict | None = None,
+    user_id: str | None = None,
 ) -> str:
     """发送聊天请求，返回文本响应。
 
     注意：relay 强制 max_tokens ≤ 3000，超出的值会被静默截断。
+    user_id 透传给 DeepSeek API 的 `user` 字段，用于 KVCache 隔离，
+    确保不同用户的请求不会在服务端共享缓存（防止"记忆串台"）。
     """
     body: dict = dict(
         model=model or MODEL_FLASH,
@@ -121,6 +124,8 @@ async def chat(
     )
     if response_format is not None:
         body["response_format"] = response_format
+    if user_id is not None:
+        body["user"] = user_id
 
     async with httpx.AsyncClient(timeout=60.0, verify=httpx_verify()) as client:
         resp = await client.post(
@@ -143,6 +148,7 @@ async def chat_stream(
     model: str | None = None,
     temperature: float = 0.1,
     max_tokens: int = 2048,
+    user_id: str | None = None,
 ):
     """流式发送聊天请求，逐块 yield 文本。"""
     body: dict = dict(
@@ -152,6 +158,8 @@ async def chat_stream(
         max_tokens=min(max_tokens, 3000),
         stream=True,
     )
+    if user_id is not None:
+        body["user"] = user_id
 
     async with httpx.AsyncClient(timeout=60.0, verify=httpx_verify()) as client:
         async with client.stream(
@@ -184,7 +192,7 @@ async def chat_stream(
 # ── 分类 ─────────────────────────────────────────────────────────────────────
 
 
-async def classify(content: str) -> str:
+async def classify(content: str, uid: str = "default") -> str:
     """将用户输入分类到一个或多个类别。
 
     返回 JSON 字符串数组：["事件记录", "任务", "感受", "笔记"]
@@ -208,6 +216,7 @@ JSON 数组："""
         model=MODEL_FLASH,
         temperature=0.0,
         max_tokens=128,
+        user_id=uid,
     )
     return result.strip()
 
@@ -215,7 +224,7 @@ JSON 数组："""
 # ── 结构化提取 ───────────────────────────────────────────────────────────────
 
 
-async def extract_structured(content: str) -> str:
+async def extract_structured(content: str, uid: str = "default") -> str:
     """从原始输入中提取结构化信息。
 
     返回 JSON 对象，包含：标题、时间表达、动作、人物、地点、摘要
@@ -243,6 +252,7 @@ JSON："""
         model=MODEL_FLASH,
         temperature=0.0,
         max_tokens=512,
+        user_id=uid,
     )
     return result.strip()
 
@@ -250,7 +260,7 @@ JSON："""
 # ── 时间线生成 ───────────────────────────────────────────────────────────────
 
 
-async def generate_timeline(records_json: str, lang: str = "zh-CN") -> str:
+async def generate_timeline(records_json: str, lang: str = "zh-CN", uid: str = "default") -> str:
     """从一批记录中生成时间线事件。"""
     prompt = f"""你正在分析个人记录来构建时间线。
 当前时间：{_now_context()}。这个时间戳用来判断"过去/现在/未来"。
@@ -295,6 +305,7 @@ JSON 数组："""
         model=MODEL_PRO,
         temperature=0.2,
         max_tokens=3000,
+        user_id=uid,
     )
     return result.strip()
 
@@ -302,7 +313,7 @@ JSON 数组："""
 # ── 任务提取 ─────────────────────────────────────────────────────────────────
 
 
-async def generate_tasks(records_json: str, existing_tasks_json: str = "[]", lang: str = "zh-CN") -> str:
+async def generate_tasks(records_json: str, existing_tasks_json: str = "[]", lang: str = "zh-CN", uid: str = "default") -> str:
     """从记录中提取待办事项。"""
     prompt = f"""从以下个人记录中提取行动事项/待办。
 当前时间：{_now_context()}。这个时间戳用来解析"明天/后天/下周"等相对日期。
@@ -391,6 +402,7 @@ JSON 数组："""
         model=MODEL_PRO,
         temperature=0.2,
         max_tokens=3000,
+        user_id=uid,
     )
     return result.strip()
 
@@ -399,7 +411,8 @@ JSON 数组："""
 
 
 async def generate_context(
-    recent_events_json: str, recent_tasks_json: str, voice_emotion_summary: str = "", lang: str = "zh-CN"
+    recent_events_json: str, recent_tasks_json: str, voice_emotion_summary: str = "", lang: str = "zh-CN",
+    uid: str = "default",
 ) -> str:
     """根据最近的事件和任务生成当前上下文摘要。
 
@@ -428,6 +441,7 @@ JSON："""
         model=MODEL_PRO,
         temperature=0.3,
         max_tokens=1024,
+        user_id=uid,
     )
     return result.strip()
 
@@ -435,7 +449,7 @@ JSON："""
 # ── 自然语言问答 ─────────────────────────────────────────────────────────────
 
 
-async def answer_query(question: str, context_json: str, lang: str = "zh-CN") -> str:
+async def answer_query(question: str, context_json: str, lang: str = "zh-CN", uid: str = "default") -> str:
     """用用户的记录作为上下文回答自然语言问题。"""
     prompt = f"""判断用户输入是否是问题，如果是则根据以下记录回答。如果不是问题（如陈述、记录、感叹），直接标记。
 
@@ -458,6 +472,7 @@ async def answer_query(question: str, context_json: str, lang: str = "zh-CN") ->
         model=MODEL_FLASH,
         temperature=0.1,
         max_tokens=512,
+        user_id=uid,
     )
     return result.strip()
 
@@ -481,7 +496,7 @@ def _build_query_prompt(question: str, context_json: str) -> str:
 - 涉及健康话题加免责声明"""
 
 
-async def answer_query_stream(question: str, context_json: str, lang: str = "zh-CN"):
+async def answer_query_stream(question: str, context_json: str, lang: str = "zh-CN", uid: str = "default"):
     """流式回答，逐块 yield 文本片段。"""
     prompt = _build_query_prompt(question, context_json)
     async for chunk in chat_stream(
@@ -489,11 +504,12 @@ async def answer_query_stream(question: str, context_json: str, lang: str = "zh-
         model=MODEL_FLASH,
         temperature=0.1,
         max_tokens=512,
+        user_id=uid,
     ):
         yield chunk
 
 
-async def classify_intent(text: str) -> str:
+async def classify_intent(text: str, uid: str = "default") -> str:
     """极快判断用户输入是否为询问。返回 "question" 或 "record"。
 
     只走 flash 模型，temp=0，max_tokens=5，通常 <500ms。
@@ -515,6 +531,7 @@ async def classify_intent(text: str) -> str:
             model=MODEL_FLASH,
             temperature=0.0,
             max_tokens=5,
+            user_id=uid,
         )
         result = result.strip().lower()
         if "question" in result:
@@ -528,7 +545,7 @@ async def classify_intent(text: str) -> str:
 # ── 情绪指数生成 ─────────────────────────────────────────────────────────────
 
 
-async def polish_asr_text(text: str) -> str:
+async def polish_asr_text(text: str, uid: str = "default") -> str:
     """ASR 转写后的同音字 / 别字轻度纠正。
 
     用于"录音结束后 → LLM 与用户抢时间"的隐式修正：
@@ -559,6 +576,7 @@ async def polish_asr_text(text: str) -> str:
         model=MODEL_FLASH,
         temperature=0.0,
         max_tokens=min(len(text) * 3 + 100, 3000),
+        user_id=uid,
     )
     return result.strip()
 
@@ -566,7 +584,7 @@ async def polish_asr_text(text: str) -> str:
 # ── 情绪指数生成 ─────────────────────────────────────────────────────────────
 
 
-async def generate_mood(records_json: str, voice_emotion_summary: str = "", lang: str = "zh-CN") -> str:
+async def generate_mood(records_json: str, voice_emotion_summary: str = "", lang: str = "zh-CN", uid: str = "default") -> str:
     """从近期记录中分析用户情绪状态。
 
     voice_emotion_summary: 语音声学情绪分布摘要（如 "sad×3 / neutral×2 / happy×1"），
@@ -613,5 +631,6 @@ JSON："""
         model=MODEL_PRO,
         temperature=0.3,
         max_tokens=1024,
+        user_id=uid,
     )
     return result.strip()
