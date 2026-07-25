@@ -146,6 +146,7 @@ class TaskOut(BaseModel):
     due_date: datetime | None
     confidence: float
     created_at: datetime
+    started_at: datetime | None = None
     completed_at: datetime | None
     source_record_ids: list[int] = []
 

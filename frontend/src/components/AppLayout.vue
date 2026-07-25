@@ -8,9 +8,11 @@ import { setLocale, availableLocales } from '../i18n'
 import { getUserId, setUserId } from '../user'
 import { connectSync, disconnectSync } from '../sync'
 import InstallHint from './InstallHint.vue'
+import ExportDialog from './ExportDialog.vue'
 
 const { t, locale } = useI18n()
 const showSettings = ref(false)
+const showExport = ref(false)
 const settingsMsg = ref('')
 const settingsErr = ref(false)
 
@@ -19,16 +21,23 @@ onUnmounted(disconnectSync)
 const router = useRouter()
 const route = useRoute()
 
-const tabs = computed(() => [
+// Desktop shows all 5 tabs. Mobile shows the first 4 only — dashboard is
+// desktop-first ("自适应尺寸") and reachable from Settings on small screens.
+const mobileTabs = computed(() => [
   { name: 'home', label: t('nav.home'), title: t('nav.home'), path: '/', icon: 'fa-house' },
   { name: 'timeline', label: t('nav.timeline'), title: t('home.eventsTitle'), path: '/timeline', icon: 'fa-calendar-days' },
   { name: 'tasks', label: t('nav.tasks'), title: t('home.tasksTitle'), path: '/tasks', icon: 'fa-circle-check' },
   { name: 'query', label: t('nav.query'), title: t('nav.query'), path: '/query', icon: 'fa-comment-dots' },
 ])
 
+const desktopTabs = computed(() => [
+  ...mobileTabs.value,
+  { name: 'dashboard', label: t('nav.dashboard'), title: t('dashboard.title'), path: '/dashboard', icon: 'fa-chart-simple' },
+])
+
 const isHome = computed(() => route.path === '/')
 const currentTitle = computed(() => {
-  const tab = tabs.value.find(t => t.path === route.path)
+  const tab = desktopTabs.value.find(t => t.path === route.path)
   return tab ? tab.title : ''
 })
 const showIcp = computed(() => {
@@ -70,6 +79,16 @@ function handleSwitchId(newUid: string) {
   settingsErr.value = false
   setTimeout(() => { location.reload() }, 1500)
 }
+
+function openDashboard() {
+  showSettings.value = false
+  router.push('/dashboard')
+}
+
+function openExport() {
+  showSettings.value = false
+  showExport.value = true
+}
 </script>
 
 <template>
@@ -105,9 +124,9 @@ function handleSwitchId(newUid: string) {
       </div>
 
       <div class="flex items-center gap-2">
-        <!-- Desktop nav tabs -->
+        <!-- Desktop nav tabs (5 tabs including dashboard) -->
         <nav class="hidden lg:flex items-center gap-1 mr-2">
-          <button v-for="tab in tabs" :key="tab.name" @click="router.push(tab.path)"
+          <button v-for="tab in desktopTabs" :key="tab.name" @click="router.push(tab.path)"
             :class="['text-xs px-3 py-1.5 rounded-lg font-medium transition-colors',
               route.path === tab.path ? 'bg-violet-50 text-violet-600' : 'text-stone-400 hover:text-stone-600 hover:bg-stone-50']">
             <i :class="['fa-solid', tab.icon, 'mr-1 text-[10px]']"></i>{{ tab.label }}
@@ -135,9 +154,9 @@ function handleSwitchId(newUid: string) {
       <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" class="text-[11px] text-stone-400 hover:text-stone-600 transition-colors">渝ICP备2023009735号</a>
     </footer>
 
-    <!-- Mobile bottom tabs (only on sub-pages: timeline/tasks/query) -->
+    <!-- Mobile bottom tabs (only on sub-pages: timeline/tasks/query) — 4 tabs, dashboard omitted -->
     <nav v-if="!isHome" class="lg:hidden shrink-0 bg-white border-t border-stone-100 flex justify-around py-1.5 px-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
-      <button v-for="tab in tabs" :key="tab.name" @click="router.push(tab.path)"
+      <button v-for="tab in mobileTabs" :key="tab.name" @click="router.push(tab.path)"
         :class="['flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-all min-w-0',
           route.path === tab.path ? 'text-violet-600' : 'text-stone-400']">
         <i :class="['fa-solid', tab.icon, 'text-base']"></i>
@@ -180,9 +199,26 @@ function handleSwitchId(newUid: string) {
 
             <!-- Status message -->
             <p v-if="settingsMsg" :class="['text-xs rounded-lg px-3 py-2', settingsErr ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600']">{{ settingsMsg }}</p>
+
+            <!-- Quick entries: Dashboard (mobile access point) + Export -->
+            <div class="mt-4 pt-4 border-t border-stone-100 grid grid-cols-2 gap-2">
+              <button @click="openDashboard"
+                class="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-stone-50 hover:bg-violet-50 text-stone-600 hover:text-violet-600 transition-colors text-xs font-medium">
+                <i class="fa-solid fa-chart-simple text-violet-400"></i>
+                <span>{{ t('nav.dashboard') }}</span>
+              </button>
+              <button @click="openExport"
+                class="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-stone-50 hover:bg-violet-50 text-stone-600 hover:text-violet-600 transition-colors text-xs font-medium">
+                <i class="fa-solid fa-file-arrow-down text-violet-400"></i>
+                <span>{{ t('export.title') }}</span>
+              </button>
+            </div>
           </div>
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Export dialog -->
+    <ExportDialog :open="showExport" @close="showExport = false" />
   </div>
 </template>

@@ -213,8 +213,8 @@ Chat 和 ASR 都通过 `advx.fzxufuyu.eu.org` 中继转发（无需 key，内部
 需要向版权持有人购买商业授权。
 
 商业授权洽谈联系方式：
-邮箱：xufuyu@outlook.com
+邮箱：xufuyu-mg@outlook.com
 
 ---
 
-版权所有 © 2026 xufuyu
+版权所有 © 2026 EvanXu & BudianUltra

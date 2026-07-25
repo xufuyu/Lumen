@@ -68,6 +68,7 @@ class Task(Base):
     confidence = Column(Float, default=0.5)
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+    started_at = Column(DateTime)   # 首次迁移到 in_progress 时写入
     completed_at = Column(DateTime)
 
     records = relationship("Record", secondary="record_tasks", back_populates="tasks")

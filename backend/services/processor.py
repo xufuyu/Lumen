@@ -98,6 +98,36 @@ def _map_status(val: str | None) -> str:
     return _STATUS_MAP.get(val, "pending")
 
 
+def _apply_task_status(task: Task, new_status: str) -> None:
+    """把状态迁移的所有时间戳副作用集中在这里，避免三处重复。
+
+    - done → completed_at = now
+    - in_progress → started_at (首次) + 清空 completed_at
+    - pending → 清空 completed_at；started_at 保留（反映"曾经开始过"）
+    """
+    task.status = new_status
+    if new_status == "done":
+        task.completed_at = _now()
+    elif new_status == "in_progress":
+        if task.started_at is None:
+            task.started_at = _now()
+        task.completed_at = None
+    elif new_status == "pending":
+        task.completed_at = None
+
+
+def _stamp_new_task(task: Task) -> None:
+    """新任务如果直接被创建为 in_progress 或 done，补齐对应时间戳。
+
+    与 _apply_task_status 的区别：不修改 status（constructor 已经设过），
+    只是给已经落定的初始状态补时间戳，避免"新建但缺 started_at/completed_at"。
+    """
+    if task.status == "in_progress" and task.started_at is None:
+        task.started_at = _now()
+    elif task.status == "done" and task.completed_at is None:
+        task.completed_at = _now()
+
+
 def _parse_dt(val: str | None) -> datetime | None:
     """安全解析 ISO 时间字符串。"""
     if not val:
@@ -111,7 +141,7 @@ def _parse_dt(val: str | None) -> datetime | None:
 # ── 主处理流程 ────────────────────────────────────────────────────────────────
 
 
-async def process_records(db: AsyncSession, uid: str = "default") -> dict:
+async def process_records(db: AsyncSession, uid: str = "default", lang: str = "zh-CN") -> dict:
     """处理所有未处理的记录。
 
     返回包含处理计数的摘要字典。
@@ -163,7 +193,7 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
 
     try:
         # 生成时间线事件
-        timeline_raw = await generate_timeline(records_json)
+        timeline_raw = await generate_timeline(records_json, lang)
         events_data = _safe_json(timeline_raw)
 
         if isinstance(events_data, list):
@@ -187,7 +217,7 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
                 events_created += 1
 
         # 生成任务
-        tasks_raw = await generate_tasks(records_json, existing_tasks_json)
+        tasks_raw = await generate_tasks(records_json, existing_tasks_json, lang)
         tasks_data = _safe_json(tasks_raw)
 
         if isinstance(tasks_data, list):
@@ -221,11 +251,7 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
 
                     if existing and existing.status != task_status:
                         logger.info(f"[processor] LLM 指定更新任务 #{existing.id}: {existing.title!r} → {task_status}")
-                        existing.status = task_status
-                        if task_status == "done":
-                            existing.completed_at = _now()
-                        elif task_status == "pending":
-                            existing.completed_at = None
+                        _apply_task_status(existing, task_status)
                         for rid in source_ids:
                             if any(r.id == rid for r in unprocessed):
                                 existing_rec = await db.execute(
@@ -254,6 +280,7 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
                             confidence=_get(t_data, "确信度", "confidence", default=0.5),
                             status=task_status,
                         )
+                        _stamp_new_task(task)
                         db.add(task)
                         await db.flush()
                         for rid in source_ids:
@@ -278,11 +305,7 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
                             logger.info(f"[processor] [更新] 匹配: {original_title!r} → {matched_title!r} (score={score:.2f})")
 
                     if existing and existing.status != task_status:
-                        existing.status = task_status
-                        if task_status == "done":
-                            existing.completed_at = _now()
-                        elif task_status == "pending":
-                            existing.completed_at = None
+                        _apply_task_status(existing, task_status)
                         for rid in source_ids:
                             if any(r.id == rid for r in unprocessed):
                                 existing_rec = await db.execute(
@@ -296,7 +319,7 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
                         tasks_updated += 1
                     elif not existing:
                         # 找不到匹配的任务，退化为新建
-                        task = Task(user_id=uid, 
+                        task = Task(user_id=uid,
                             title=original_title,
                             description=_get(t_data, "描述", "description"),
                             priority=_map_priority(_get(t_data, "优先级", "priority", default="中")),
@@ -304,6 +327,7 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
                             confidence=_get(t_data, "确信度", "confidence", default=0.5),
                             status=task_status,
                         )
+                        _stamp_new_task(task)
                         db.add(task)
                         await db.flush()
                         for rid in source_ids:
@@ -325,10 +349,8 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
                             status_changed = False
                             # 允许 pending → in_progress / done 的自动更新
                             if matched_task.status in ("pending", "in_progress") and task_status != matched_task.status:
-                                matched_task.status = task_status
+                                _apply_task_status(matched_task, task_status)
                                 status_changed = True
-                                if task_status == "done":
-                                    matched_task.completed_at = _now()
                             # 链接记录
                             for rid in source_ids:
                                 if any(r.id == rid for r in unprocessed):
@@ -352,7 +374,7 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
 
                     elif match_type == "ask_user":
                         # 中分 → 先当新任务创建，但标记为需确认
-                        task = Task(user_id=uid, 
+                        task = Task(user_id=uid,
                             title=raw_title,
                             description=_get(t_data, "描述", "description"),
                             priority=_map_priority(_get(t_data, "优先级", "priority", default="中")),
@@ -360,6 +382,7 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
                             confidence=min(_get(t_data, "确信度", "confidence", default=0.5), 0.5),
                             status=task_status,
                         )
+                        _stamp_new_task(task)
                         db.add(task)
                         await db.flush()
                         for rid in source_ids:
@@ -387,6 +410,7 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
                         confidence=_get(t_data, "确信度", "confidence", default=0.5),
                         status=task_status,
                     )
+                    _stamp_new_task(task)
                     db.add(task)
                     await db.flush()
 
@@ -398,8 +422,6 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
                         tasks_created += 1
                     elif task_status == "done":
                         tasks_created += 1
-                        if task.completed_at is None:
-                            task.completed_at = _now()
                         auto_completed_tasks.append({
                             "task_id": task.id,
                             "title": task.title,
@@ -423,7 +445,7 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
     # 5. 更新上下文快照（尽力而为，不因失败阻断整个管线）
     context_updated = False
     try:
-        await _update_context(db, uid)
+        await _update_context(db, uid, lang)
         context_updated = True
     except Exception:
         logger.exception("上下文更新失败")
@@ -440,7 +462,7 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
     }
 
 
-async def _update_context(db: AsyncSession, uid: str = "default") -> None:
+async def _update_context(db: AsyncSession, uid: str = "default", lang: str = "zh-CN") -> None:
     """根据最近的事件和任务生成新的上下文快照。"""
     # 获取最近事件（最近 7 天）
     events_result = await db.execute(
@@ -481,7 +503,7 @@ async def _update_context(db: AsyncSession, uid: str = "default") -> None:
         default=str,
     )
 
-    context_raw = await generate_context(events_json, tasks_json, voice_emo_summary)
+    context_raw = await generate_context(events_json, tasks_json, voice_emo_summary, lang)
     context_data = _safe_json(context_raw)
 
     context = Context(user_id=uid, 

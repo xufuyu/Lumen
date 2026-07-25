@@ -8,9 +8,10 @@ import {
   type ContextOut, type RecordOut, type TaskOut, type EventOut, type MoodOut, type MergeCandidate,
   type QueryResponse,
 } from '../api/client'
+import { dayOffset, formatSmartDate, formatRelative, groupByDay } from '../utils/date'
 import RecordInput from '../components/RecordInput.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const router = useRouter()
 
 const context = ref<ContextOut | null>(null)
@@ -194,19 +195,57 @@ async function handleResolveMerge(candidate: MergeCandidate, action: 'merge' | '
   } catch (e: unknown) { showToast('error', `${t('input.procError')}: ${e instanceof Error ? e.message : ''}`) }
 }
 
-function formatRelative(dt: string) {
-  const diff = Date.now() - new Date(dt).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return '刚刚'
-  if (mins < 60) return `${mins}分钟前`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}小时前`
-  return `${Math.floor(hours / 24)}天前`
-}
-
 const priorityBadge = (p: string) => p === 'high' ? 'bg-rose-50 text-rose-600' : p === 'medium' ? 'bg-amber-50 text-amber-600' : 'bg-stone-100 text-stone-500'
 const priorityLabel = (p: string) => p === 'high' ? t('priority.high') : p === 'medium' ? t('priority.medium') : t('priority.low')
 const hasContent = computed(() => recordCount.value > 0 || taskCount.value > 0 || eventCount.value > 0)
+
+// ── Today-first task grouping ─────────────────────────────────────────────
+// A task is "active today" if it's in_progress, due today, or created today
+// without any due date. If we have fewer than TODAY_MIN of these, we top up
+// with upcoming tasks (due date in the next 6 days) so the empty state
+// doesn't feel abandoned. Everything gets grouped by day and labeled with
+// a smart-date title (今天 / 明天 / 后天 / 周三 / 日期).
+const TODAY_MIN = 3
+const HOME_MAX = 8
+
+const todayFirstTasks = computed<TaskOut[]>(() => {
+  const all = activeTasks.value
+  const todayOnes = all.filter(t => {
+    if (t.status === 'in_progress') return true
+    if (t.due_date && dayOffset(t.due_date) === 0) return true
+    if (!t.due_date && dayOffset(t.created_at) === 0) return true
+    return false
+  })
+
+  if (todayOnes.length >= TODAY_MIN) return todayOnes.slice(0, HOME_MAX)
+
+  // Top up with upcoming (due in next 6 days), ordered by due_date ascending.
+  const upcoming = all
+    .filter(t => t.due_date && !todayOnes.includes(t)
+      && (dayOffset(t.due_date) ?? -99) > 0
+      && (dayOffset(t.due_date) ?? -99) <= 6)
+    .sort((a, b) => new Date(a.due_date!).getTime() - new Date(b.due_date!).getTime())
+
+  return [...todayOnes, ...upcoming].slice(0, HOME_MAX)
+})
+
+const groupedHomeTasks = computed(() =>
+  groupByDay(todayFirstTasks.value, t => t.due_date || t.created_at),
+)
+
+const homeGroupDays = computed(() => {
+  const keys = Array.from(groupedHomeTasks.value.keys())
+  return keys.sort((a, b) => {
+    if (a === null) return 1
+    if (b === null) return -1
+    return (dayOffset(a) ?? 0) - (dayOffset(b) ?? 0)
+  })
+})
+
+function homeDayLabel(key: string | null): string {
+  if (!key) return t('tasks.groups.someday')
+  return formatSmartDate(key, locale.value)
+}
 
 // Mood display helpers
 const moodEmoji = computed(() => {
@@ -292,19 +331,28 @@ onUnmounted(() => {
       <section v-if="hasContent" class="lg:col-span-3 lg:row-start-1">
         <div class="flex items-center justify-between mb-2.5">
           <h2 class="text-sm font-bold text-stone-700">
-            <i class="fa-solid fa-circle-check mr-1.5 text-violet-400"></i>我要做什么？
+            <i class="fa-solid fa-circle-check mr-1.5 text-violet-400"></i>{{ t('home.tasksTitle') }}
             <span class="text-xs text-stone-400 font-normal ml-1">{{ taskCount }} {{ t('home.tasksUnit') }}</span>
           </h2>
           <button @click="router.push('/tasks')" class="text-xs text-violet-500 font-medium">{{ t('home.viewAll') }}</button>
         </div>
-        <div v-if="activeTasks.length === 0" class="text-center py-6 text-stone-300 text-xs">{{ t('home.tasksEmpty') }}</div>
-        <div v-else class="space-y-1.5">
-          <div v-for="task in activeTasks.slice(0, 4)" :key="task.id"
-            @click="router.push('/tasks')"
-            class="flex items-center gap-3 rounded-xl bg-stone-50 px-4 py-3 hover:bg-stone-100 transition-colors cursor-pointer active:scale-[0.98]">
-            <span :class="['w-2 h-2 rounded-full shrink-0', task.priority === 'high' ? 'bg-rose-400' : task.priority === 'medium' ? 'bg-amber-400' : 'bg-stone-300']"></span>
-            <span :class="['text-sm flex-1 truncate', task.status === 'done' ? 'text-stone-400 line-through' : 'text-stone-700']">{{ task.title }}</span>
-            <span :class="['text-[10px] px-1.5 py-0.5 rounded-full font-medium', priorityBadge(task.priority)]">{{ priorityLabel(task.priority) }}</span>
+        <div v-if="todayFirstTasks.length === 0" class="text-center py-6 text-stone-300 text-xs">{{ t('home.noTodayTasks') }}</div>
+        <div v-else class="space-y-3">
+          <div v-for="dayK in homeGroupDays" :key="dayK ?? 'someday'" class="space-y-1.5">
+            <div class="flex items-center gap-2 px-1">
+              <span class="text-[11px] font-semibold text-stone-500">{{ homeDayLabel(dayK) }}</span>
+              <span class="text-[10px] text-stone-300">{{ groupedHomeTasks.get(dayK)?.length ?? 0 }}</span>
+            </div>
+            <div v-for="task in groupedHomeTasks.get(dayK)" :key="task.id"
+              @click="router.push('/tasks')"
+              class="flex items-center gap-3 rounded-xl bg-stone-50 px-4 py-3 hover:bg-stone-100 transition-colors cursor-pointer active:scale-[0.98]">
+              <span :class="['w-2 h-2 rounded-full shrink-0', task.priority === 'high' ? 'bg-rose-400' : task.priority === 'medium' ? 'bg-amber-400' : 'bg-stone-300']"></span>
+              <span :class="['text-sm flex-1 truncate', task.status === 'in_progress' ? 'text-amber-700 font-medium' : 'text-stone-700']">{{ task.title }}</span>
+              <span v-if="task.status === 'in_progress'" class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium">
+                <i class="fa-solid fa-circle-half-stroke mr-0.5"></i>{{ t('tasks.status.in_progress') }}
+              </span>
+              <span :class="['text-[10px] px-1.5 py-0.5 rounded-full font-medium', priorityBadge(task.priority)]">{{ priorityLabel(task.priority) }}</span>
+            </div>
           </div>
         </div>
       </section>
@@ -313,7 +361,7 @@ onUnmounted(() => {
       <section v-if="hasContent" class="lg:col-span-3 lg:row-start-2">
         <div class="flex items-center justify-between mb-2.5">
           <h2 class="text-sm font-bold text-stone-700">
-            <i class="fa-solid fa-calendar-days mr-1.5 text-violet-400"></i>我做了什么？
+            <i class="fa-solid fa-calendar-days mr-1.5 text-violet-400"></i>{{ t('home.eventsTitle') }}
             <span class="text-xs text-stone-400 font-normal ml-1">{{ eventCount }} {{ t('home.eventsUnit') }}</span>
           </h2>
           <button @click="router.push('/timeline')" class="text-xs text-violet-500 font-medium">{{ t('home.viewAll') }}</button>
@@ -334,10 +382,10 @@ onUnmounted(() => {
       <section v-if="context && context.id !== 0" class="lg:col-span-2 lg:col-start-4 lg:row-start-2">
         <div class="flex items-center justify-between mb-2.5">
           <h2 class="text-sm font-bold text-stone-700">
-            <i class="fa-solid fa-location-dot mr-1.5 text-violet-400"></i>我正在做什么？
+            <i class="fa-solid fa-location-dot mr-1.5 text-violet-400"></i>{{ t('home.contextTitle') }}
           </h2>
           <button @click="handleRefreshContext()" class="text-xs text-violet-500 font-medium">
-            <i :class="['fa-solid mr-1', contextLoading ? 'fa-spinner animate-spin' : 'fa-arrows-rotate']"></i>刷新
+            <i :class="['fa-solid mr-1', contextLoading ? 'fa-spinner animate-spin' : 'fa-arrows-rotate']"></i>{{ t('home.refresh') }}
           </button>
         </div>
         <div class="rounded-xl bg-stone-50 px-4 py-3">
@@ -462,7 +510,7 @@ onUnmounted(() => {
           class="rounded-xl bg-stone-50 px-4 py-3">
           <p class="text-sm text-stone-700 leading-snug">{{ rec.content }}</p>
           <div class="flex items-center justify-between mt-2">
-            <p class="text-xs text-stone-400">{{ formatRelative(rec.created_at) }}</p>
+            <p class="text-xs text-stone-400">{{ formatRelative(rec.created_at, locale) }}</p>
             <div class="flex gap-1">
               <button @click="handleReprocessRecord(rec.id)" class="text-xs text-violet-400 hover:text-violet-600 px-2 py-1"><i class="fa-solid fa-rotate-right mr-1"></i>{{ t('records.reprocess') }}</button>
               <button @click="handleDeleteRecord(rec.id)" class="text-xs text-rose-400 hover:text-rose-600 px-2 py-1"><i class="fa-solid fa-trash-can mr-1"></i>{{ t('records.delete') }}</button>

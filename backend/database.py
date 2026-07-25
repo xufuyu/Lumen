@@ -45,6 +45,13 @@ async def init_db() -> None:
             except Exception:
                 pass  # column already exists
 
+        # Migration: add started_at to tasks (records when the task first entered in_progress)
+        try:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN started_at DATETIME"))
+            logger.info("Migration: added started_at to tasks")
+        except Exception:
+            pass  # column already exists
+
 
 async def current_user_id(
     request: Request,
@@ -52,3 +59,23 @@ async def current_user_id(
 ) -> str:
     """Extract user_id from X-User-ID header. Falls back to 'default'."""
     return x_user_id.strip() or "default"
+
+
+SUPPORTED_LANGS = {"zh-CN", "en"}
+
+
+async def current_lang(
+    x_user_language: str = Header(default="zh-CN", alias="X-User-Language"),
+) -> str:
+    """Extract UI language from X-User-Language header. Falls back to 'zh-CN'.
+
+    The frontend sends the current i18n locale with every request; the backend
+    uses it to localize LLM output and user-facing messages.
+    """
+    lang = x_user_language.strip()
+    return lang if lang in SUPPORTED_LANGS else "zh-CN"
+
+
+def pick(lang: str, zh: str, en: str) -> str:
+    """Pick a user-facing message by UI language."""
+    return en if lang == "en" else zh

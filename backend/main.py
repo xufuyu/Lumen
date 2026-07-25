@@ -72,6 +72,7 @@ from routers.asr import router as asr_router  # noqa: E402
 from routers.merge import router as merge_router  # noqa: E402
 from routers.user import router as user_router  # noqa: E402
 from routers.sync import router as sync_router  # noqa: E402
+from routers.export import router as export_router  # noqa: E402
 
 app.include_router(sync_router)
 app.include_router(user_router)
@@ -84,6 +85,7 @@ app.include_router(process_router)
 app.include_router(mood_router)
 app.include_router(asr_router)
 app.include_router(merge_router)
+app.include_router(export_router)
 
 
 # ── Health check ────────────────────────────────────────────────────────────

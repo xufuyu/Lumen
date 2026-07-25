@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import type { TaskOut } from '../api/client'
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { formatSmartDate, formatSmartDateTime, formatRelative } from '../utils/date'
 import TooltipIcon from './TooltipIcon.vue'
 
 const props = defineProps<{ task: TaskOut }>()
 const emit = defineEmits<{ statusChange: [id: number, status: string]; delete: [id: number] }>()
+const { t, locale } = useI18n()
 
 const priorityBadge = computed(() => {
   switch (props.task.priority) {
-    case 'high': return { text: '高', color: 'bg-rose-50 text-rose-600' }
-    case 'medium': return { text: '中', color: 'bg-amber-50 text-amber-600' }
-    case 'low': return { text: '低', color: 'bg-stone-100 text-stone-500' }
+    case 'high': return { text: t('priority.high'), color: 'bg-rose-50 text-rose-600' }
+    case 'medium': return { text: t('priority.medium'), color: 'bg-amber-50 text-amber-600' }
+    case 'low': return { text: t('priority.low'), color: 'bg-stone-100 text-stone-500' }
     default: return { text: props.task.priority, color: 'bg-stone-100 text-stone-500' }
   }
 })
@@ -40,21 +43,21 @@ function cycleStatus() {
   emit('statusChange', props.task.id, next)
 }
 
-function formatDate(dt: string | null) {
-  if (!dt) return null
-  return new Date(dt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
-}
-
 const isOverdue = computed(() => {
   if (!props.task.due_date || props.task.status === 'done') return false
   return new Date(props.task.due_date) < new Date()
+})
+
+const dueLabel = computed(() => {
+  if (!props.task.due_date || props.task.status === 'done') return null
+  return formatSmartDateTime(props.task.due_date, locale.value)
 })
 </script>
 
 <template>
   <div :class="[
     'bg-white rounded-2xl shadow-sm shadow-stone-200/50 p-4 hover:shadow-md transition-shadow',
-    task.status === 'done' ? 'opacity-50' : '',
+    task.status === 'done' ? 'opacity-60' : '',
   ]">
     <div class="flex items-start gap-3">
       <button @click="cycleStatus" class="mt-0.5 shrink-0 text-xl transition-colors hover:scale-110 active:scale-95">
@@ -65,23 +68,38 @@ const isOverdue = computed(() => {
         <p v-if="task.description" class="text-xs text-stone-500 mt-1 line-clamp-2">{{ task.description }}</p>
         <div class="flex items-center gap-2 mt-2 flex-wrap">
           <span :class="['text-[11px] px-1.5 py-0.5 rounded-full font-medium', priorityBadge.color]">{{ priorityBadge.text }}</span>
-          <span v-if="task.due_date && task.status !== 'done'" class="text-[11px] text-stone-400">{{ formatDate(task.due_date) }}</span>
-          <span v-if="isOverdue" class="text-[11px] text-rose-500 font-semibold">已过期</span>
-          <span v-if="task.confidence < 1" class="text-[11px] text-stone-400">系统推测 · {{ Math.round(task.confidence * 100) }}%</span>
-          <TooltipIcon v-if="task.confidence < 1" text="此任务由 AI 从你的记录中推测得出，不一定是你的实际意图。" />
+          <span v-if="dueLabel" :class="['text-[11px]', isOverdue ? 'text-rose-500 font-semibold' : 'text-stone-400']">
+            <i class="fa-regular fa-clock mr-1"></i>{{ dueLabel }}
+          </span>
+          <span v-if="isOverdue" class="text-[11px] text-rose-500 font-semibold">{{ t('tasks.overdue') }}</span>
+          <span v-if="task.confidence < 1" class="text-[11px] text-stone-400">{{ t('records.inferred') }} · {{ Math.round(task.confidence * 100) }}%</span>
+          <TooltipIcon v-if="task.confidence < 1" :text="t('tasks.inferredTip')" />
+        </div>
+
+        <!-- Three timestamps: created / started / completed -->
+        <div class="flex items-center gap-3 mt-2 flex-wrap text-[10px] text-stone-400">
+          <span :title="task.created_at">
+            <i class="fa-regular fa-pen-to-square mr-1"></i>{{ t('tasks.stamps.created') }} {{ formatRelative(task.created_at, locale) }}
+          </span>
+          <span v-if="task.started_at" :title="task.started_at">
+            <i class="fa-solid fa-play mr-1"></i>{{ t('tasks.stamps.started') }} {{ formatSmartDate(task.started_at, locale) }} {{ new Date(task.started_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }}
+          </span>
+          <span v-if="task.completed_at" :title="task.completed_at" class="text-emerald-500">
+            <i class="fa-solid fa-check mr-1"></i>{{ t('tasks.stamps.completed') }} {{ formatSmartDate(task.completed_at, locale) }} {{ new Date(task.completed_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }}
+          </span>
         </div>
       </div>
     </div>
     <div class="flex gap-2 mt-3">
-      <button v-if="task.status !== 'done'" @click="emit('statusChange', task.id, 'in_progress')"
+      <button v-if="task.status !== 'done'" @click="emit('statusChange', task.id, task.status === 'pending' ? 'in_progress' : 'done')"
         class="text-xs text-violet-600 active:text-violet-800 font-medium transition-colors py-1 px-2 -ml-2 rounded-lg active:bg-violet-50">
-        <i class="fa-solid fa-play mr-1 text-[10px]"></i>{{ task.status === 'pending' ? '开始' : '完成' }}
+        <i class="fa-solid fa-play mr-1 text-[10px]"></i>{{ task.status === 'pending' ? t('tasks.actions.start') : t('tasks.actions.complete') }}
       </button>
       <button v-if="task.status === 'done'" @click="emit('statusChange', task.id, 'pending')"
         class="text-xs text-stone-500 active:text-stone-700 font-medium transition-colors py-1 px-2 -ml-2 rounded-lg active:bg-stone-100">
-        <i class="fa-solid fa-rotate-left mr-1"></i>重新打开
+        <i class="fa-solid fa-rotate-left mr-1"></i>{{ t('tasks.actions.reopen') }}
       </button>
-      <button @click="emit('delete', task.id)" class="text-xs text-stone-400 active:text-rose-500 transition-colors py-1 px-2 rounded-lg active:bg-rose-50 ml-auto">删除</button>
+      <button @click="emit('delete', task.id)" class="text-xs text-stone-400 active:text-rose-500 transition-colors py-1 px-2 rounded-lg active:bg-rose-50 ml-auto">{{ t('records.delete') }}</button>
     </div>
   </div>
 </template>

@@ -29,6 +29,7 @@ async def _to_out(task: Task, db: AsyncSession) -> TaskOut:
         due_date=task.due_date,
         confidence=task.confidence,
         created_at=task.created_at,  # type: ignore[arg-type]
+        started_at=task.started_at,
         completed_at=task.completed_at,
         source_record_ids=source_ids,
     )
@@ -108,10 +109,19 @@ async def update_task(task_id: int, body: TaskUpdate, db: AsyncSession = Depends
         task.description = body.description
     if body.status is not None:
         task.status = body.status.value
+        now = datetime.now(timezone.utc)
         if body.status == TaskStatus.DONE:
-            task.completed_at = datetime.now(timezone.utc)
-        elif body.status in (TaskStatus.PENDING, TaskStatus.IN_PROGRESS):
+            task.completed_at = now
+        elif body.status == TaskStatus.IN_PROGRESS:
+            # Only stamp started_at the FIRST time the task enters in_progress.
+            # If the user cycles through pending → in_progress → done → pending
+            # → in_progress, we preserve the original start moment.
+            if task.started_at is None:
+                task.started_at = now
             task.completed_at = None
+        elif body.status == TaskStatus.PENDING:
+            task.completed_at = None
+            # started_at is intentionally preserved — the task WAS started once.
     if body.priority is not None:
         task.priority = body.priority.value
     if body.due_date is not None:

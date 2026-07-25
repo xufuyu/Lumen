@@ -10,6 +10,7 @@ Relay 约束：
 """
 
 import json
+from datetime import datetime, timezone
 
 import httpx
 
@@ -33,6 +34,61 @@ VOICE_EMOTION_HINT = """
 在生成事件/任务/上下文/情绪评估时把它作为一个**参考信号**，
 但不要因此强行套情绪标签、下诊断、给建议 —— 保持中立、观察性叙述。
 """
+
+
+_WEEKDAY_ZH = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+
+# ── 用户界面语言 ──────────────────────────────────────────────────────────────
+_LANG_NAMES = {"zh-CN": "简体中文", "en": "English"}
+
+
+def _lang_system(lang: str) -> dict[str, str]:
+    """把用户的界面语言偏好作为系统提示注入，约束 LLM 的输出语言。
+
+    JSON 字段名保持提示词中给定的样子不变（后端按键名解析），
+    只要求字段值使用用户的界面语言。
+    """
+    name = _LANG_NAMES.get(lang, "简体中文")
+    return {
+        "role": "system",
+        "content": (
+            f"用户的界面语言是{name}。所有面向用户的文本内容"
+            "（标题、描述、摘要、回答、标签、关键因素、免责声明等）"
+            f"必须全部用{name}书写。"
+            "JSON 的字段名保持提示词中给定的样子不变，只翻译字段值。"
+            "无论记录原文是什么语言，输出语言始终以用户界面语言为准。"
+        ),
+    }
+
+
+def _now_context() -> str:
+    """当前本地时间的中文可读表述，注入 prompt 让 LLM 计算相对日期。
+
+    形如 "2026-07-25T14:30:00+08:00（周五）"。使用系统时区，因为 SQLite 中的
+    datetime 字段目前也按本地时钟落库。
+    """
+    now_local = datetime.now(timezone.utc).astimezone()
+    return f"{now_local.isoformat(timespec='minutes')}（{_WEEKDAY_ZH[now_local.weekday()]}）"
+
+
+# 未来日期抽取规则片段，injecte 到需要抽取截止日期的 prompt 里。
+_FUTURE_DATE_RULES = """
+截止日期抽取规则（**关键**）：
+用户经常用相对时间描述任务。请把这些相对时间**计算成绝对 ISO 时间戳**，
+写入 `截止日期` 字段（用户没说钟点就用当天 09:00 作为默认）：
+  - 「明天」/「明日」 → 明天日期 09:00
+  - 「后天」 → 后天日期 09:00
+  - 「今天下午 3 点」/「今天晚上」 → 当天对应时刻（下午默认 15:00，晚上默认 20:00）
+  - 「明天下午 3 点」 → 明天 15:00
+  - 「本周三」/「周五」等星期 → 本周对应日期（若该星期已过，取下周对应日期）
+  - 「下周三」 → 下周对应日期 09:00
+  - 「本周内」/「这周」 → 本周日 23:59
+  - 「下周」 → 下周一 09:00
+  - 「月底」 → 本月最后一天 23:59
+  - 「有空」/「以后」/「找时间」/未提到时间 → 截止日期 = null
+输出的 ISO 时间戳必须带时区，与"当前时间"保持一致。
+"""
+
 
 
 
@@ -194,9 +250,10 @@ JSON："""
 # ── 时间线生成 ───────────────────────────────────────────────────────────────
 
 
-async def generate_timeline(records_json: str) -> str:
+async def generate_timeline(records_json: str, lang: str = "zh-CN") -> str:
     """从一批记录中生成时间线事件。"""
     prompt = f"""你正在分析个人记录来构建时间线。
+当前时间：{_now_context()}。这个时间戳用来判断"过去/现在/未来"。
 以下是一个 JSON 数组，每条记录包含 id、content、created_at，可能带 voice_emotion。
 {VOICE_EMOTION_HINT}
 记录：
@@ -234,7 +291,7 @@ async def generate_timeline(records_json: str) -> str:
 JSON 数组："""
 
     result = await chat(
-        [{"role": "user", "content": prompt}],
+        [_lang_system(lang), {"role": "user", "content": prompt}],
         model=MODEL_PRO,
         temperature=0.2,
         max_tokens=3000,
@@ -245,9 +302,11 @@ JSON 数组："""
 # ── 任务提取 ─────────────────────────────────────────────────────────────────
 
 
-async def generate_tasks(records_json: str, existing_tasks_json: str = "[]") -> str:
+async def generate_tasks(records_json: str, existing_tasks_json: str = "[]", lang: str = "zh-CN") -> str:
     """从记录中提取待办事项。"""
     prompt = f"""从以下个人记录中提取行动事项/待办。
+当前时间：{_now_context()}。这个时间戳用来解析"明天/后天/下周"等相对日期。
+{_FUTURE_DATE_RULES}
 以下是一个 JSON 数组，包含记录（id、content、created_at，部分带 voice_emotion）。
 {VOICE_EMOTION_HINT}
 记录：
@@ -328,7 +387,7 @@ async def generate_tasks(records_json: str, existing_tasks_json: str = "[]") -> 
 JSON 数组："""
 
     result = await chat(
-        [{"role": "user", "content": prompt}],
+        [_lang_system(lang), {"role": "user", "content": prompt}],
         model=MODEL_PRO,
         temperature=0.2,
         max_tokens=3000,
@@ -340,7 +399,7 @@ JSON 数组："""
 
 
 async def generate_context(
-    recent_events_json: str, recent_tasks_json: str, voice_emotion_summary: str = ""
+    recent_events_json: str, recent_tasks_json: str, voice_emotion_summary: str = "", lang: str = "zh-CN"
 ) -> str:
     """根据最近的事件和任务生成当前上下文摘要。
 
@@ -365,7 +424,7 @@ async def generate_context(
 JSON："""
 
     result = await chat(
-        [{"role": "user", "content": prompt}],
+        [_lang_system(lang), {"role": "user", "content": prompt}],
         model=MODEL_PRO,
         temperature=0.3,
         max_tokens=1024,
@@ -376,7 +435,7 @@ JSON："""
 # ── 自然语言问答 ─────────────────────────────────────────────────────────────
 
 
-async def answer_query(question: str, context_json: str) -> str:
+async def answer_query(question: str, context_json: str, lang: str = "zh-CN") -> str:
     """用用户的记录作为上下文回答自然语言问题。"""
     prompt = f"""判断用户输入是否是问题，如果是则根据以下记录回答。如果不是问题（如陈述、记录、感叹），直接标记。
 
@@ -395,7 +454,7 @@ async def answer_query(question: str, context_json: str) -> str:
 - 涉及健康话题加免责声明"""
 
     result = await chat(
-        [{"role": "user", "content": prompt}],
+        [_lang_system(lang), {"role": "user", "content": prompt}],
         model=MODEL_FLASH,
         temperature=0.1,
         max_tokens=512,
@@ -422,11 +481,11 @@ def _build_query_prompt(question: str, context_json: str) -> str:
 - 涉及健康话题加免责声明"""
 
 
-async def answer_query_stream(question: str, context_json: str):
+async def answer_query_stream(question: str, context_json: str, lang: str = "zh-CN"):
     """流式回答，逐块 yield 文本片段。"""
     prompt = _build_query_prompt(question, context_json)
     async for chunk in chat_stream(
-        [{"role": "user", "content": prompt}],
+        [_lang_system(lang), {"role": "user", "content": prompt}],
         model=MODEL_FLASH,
         temperature=0.1,
         max_tokens=512,
@@ -507,7 +566,7 @@ async def polish_asr_text(text: str) -> str:
 # ── 情绪指数生成 ─────────────────────────────────────────────────────────────
 
 
-async def generate_mood(records_json: str, voice_emotion_summary: str = "") -> str:
+async def generate_mood(records_json: str, voice_emotion_summary: str = "", lang: str = "zh-CN") -> str:
     """从近期记录中分析用户情绪状态。
 
     voice_emotion_summary: 语音声学情绪分布摘要（如 "sad×3 / neutral×2 / happy×1"），
@@ -550,7 +609,7 @@ async def generate_mood(records_json: str, voice_emotion_summary: str = "") -> s
 JSON："""
 
     result = await chat(
-        [{"role": "user", "content": prompt}],
+        [_lang_system(lang), {"role": "user", "content": prompt}],
         model=MODEL_PRO,
         temperature=0.3,
         max_tokens=1024,

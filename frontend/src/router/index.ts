@@ -21,6 +21,11 @@ const routes = [
     name: 'query',
     component: () => import('../views/QueryView.vue'),
   },
+  {
+    path: '/dashboard',
+    name: 'dashboard',
+    component: () => import('../views/DashboardView.vue'),
+  },
 ]
 
 export const router = createRouter({

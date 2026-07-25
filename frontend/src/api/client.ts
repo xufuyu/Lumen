@@ -144,6 +144,7 @@ export interface TaskOut {
   due_date: string | null
   confidence: number
   created_at: string
+  started_at: string | null
   completed_at: string | null
   source_record_ids: number[]
 }
@@ -332,4 +333,32 @@ export async function mergeUserData(newUserId: string): Promise<{ merged: number
     method: 'POST',
     body: JSON.stringify({ new_user_id: newUserId }),
   })
+}
+
+// ── Export ──
+
+export type ExportScope = 'all' | 'today' | 'pending'
+
+export interface ExportCounts {
+  all: { tasks: number; events: number; records: number; total: number }
+  today: { tasks: number; events: number; records: number; total: number }
+  pending: { tasks: number; total: number }
+}
+
+export function getExportCounts() {
+  return request<ExportCounts>('/export/count')
+}
+
+/** Download markdown for the given scope. Returns the raw Blob;
+ *  callers usually pipe it into an <a download> trick. */
+export async function exportMarkdown(scope: ExportScope): Promise<Blob> {
+  const res = await fetch(`${BASE}/export?scope=${scope}&format=md`, {
+    headers: { 'X-User-ID': getUserId() },
+  })
+  if (!res.ok) {
+    let msg = ''
+    try { msg = await res.text() } catch { /* ignore */ }
+    throw new Error(msg || `HTTP ${res.status}`)
+  }
+  return res.blob()
 }
