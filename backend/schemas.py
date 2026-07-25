@@ -1,9 +1,24 @@
 """Pydantic schemas for request/response validation."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
+from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, AfterValidator
+
+
+def _ensure_utc(v: datetime) -> datetime:
+    """SQLite 存取时丢失 tzinfo，这里补回 UTC，让 FastAPI 序列化带 +00:00 后缀。
+
+    JavaScript 的 new Date() 见到无时区的 ISO 字符串会当本地时间解析，
+    导致 UTC+8 用户看到“8 小时前”。补上 tzinfo 后 JS 会正确转成本地时间。
+    """
+    if v.tzinfo is None:
+        return v.replace(tzinfo=timezone.utc)
+    return v
+
+
+UTCDatetime = Annotated[datetime, AfterValidator(_ensure_utc)]
 
 
 # ── Enums ───────────────────────────────────────────────────────────────────
@@ -62,8 +77,8 @@ class RecordOut(BaseModel):
     content: str
     type: RecordType
     status: RecordStatus
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDatetime
+    updated_at: UTCDatetime
     linked_event_ids: list[int] = []
     linked_task_ids: list[int] = []
 
@@ -95,8 +110,8 @@ class PolishResponse(BaseModel):
 class EventUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
-    start_time: datetime | None = None
-    end_time: datetime | None = None
+    start_time: UTCDatetime | None = None
+    end_time: UTCDatetime | None = None
     status: EventStatus | None = None
 
 
@@ -104,11 +119,11 @@ class EventOut(BaseModel):
     id: int
     title: str
     description: str | None
-    start_time: datetime | None
-    end_time: datetime | None
+    start_time: UTCDatetime | None
+    end_time: UTCDatetime | None
     confidence: float
     status: EventStatus
-    created_at: datetime
+    created_at: UTCDatetime
     source_record_ids: list[int] = []
 
     model_config = {"from_attributes": True}
@@ -126,7 +141,7 @@ class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
     description: str | None = None
     priority: TaskPriority = TaskPriority.MEDIUM
-    due_date: datetime | None = None
+    due_date: UTCDatetime | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -134,7 +149,7 @@ class TaskUpdate(BaseModel):
     description: str | None = None
     status: TaskStatus | None = None
     priority: TaskPriority | None = None
-    due_date: datetime | None = None
+    due_date: UTCDatetime | None = None
 
 
 class TaskOut(BaseModel):
@@ -143,11 +158,11 @@ class TaskOut(BaseModel):
     description: str | None
     status: TaskStatus
     priority: TaskPriority
-    due_date: datetime | None
+    due_date: UTCDatetime | None
     confidence: float
-    created_at: datetime
-    started_at: datetime | None = None
-    completed_at: datetime | None
+    created_at: UTCDatetime
+    started_at: UTCDatetime | None = None
+    completed_at: UTCDatetime | None
     source_record_ids: list[int] = []
 
     model_config = {"from_attributes": True}
@@ -164,9 +179,9 @@ class TaskList(BaseModel):
 class ContextOut(BaseModel):
     id: int
     summary: str
-    valid_from: datetime
-    valid_until: datetime | None
-    created_at: datetime
+    valid_from: UTCDatetime
+    valid_until: UTCDatetime | None
+    created_at: UTCDatetime
     source_record_ids: list[int] = []
 
     model_config = {"from_attributes": True}
@@ -182,7 +197,7 @@ class QueryRequest(BaseModel):
 class QuerySource(BaseModel):
     record_id: int
     excerpt: str
-    created_at: datetime
+    created_at: UTCDatetime
 
 
 class QueryResponse(BaseModel):
@@ -201,7 +216,7 @@ class MoodOut(BaseModel):
     label: str
     summary: str
     key_factors: list[str] = []
-    created_at: datetime
+    created_at: UTCDatetime
 
     model_config = {"from_attributes": True}
 

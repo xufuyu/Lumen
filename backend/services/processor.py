@@ -129,11 +129,15 @@ def _stamp_new_task(task: Task) -> None:
 
 
 def _parse_dt(val: str | None) -> datetime | None:
-    """安全解析 ISO 时间字符串。"""
+    """安全解析 ISO 时间字符串，带时区的统一转 UTC 后返回。"""
     if not val:
         return None
     try:
-        return datetime.fromisoformat(val.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
+        # LLM 可能返回本地时区时间（如 +08:00），存库前统一转 UTC
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc)
+        return dt
     except (ValueError, TypeError):
         return None
 
