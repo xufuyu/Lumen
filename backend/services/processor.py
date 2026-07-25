@@ -208,8 +208,61 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
                 raw_title = _get(t_data, "标题", "title", default="未命名任务")
                 source_ids = _get(t_data, "来源记录ID", "source_record_ids", default=[])
                 task_status = _map_status(_get(t_data, "状态", "status"))
+                update_task_id = _get(t_data, "更新任务ID", "update_task_id")  # LLM 直接指定要更新的任务 ID
 
-                # ── 状态更新：[更新] 原标题 → 更新已有任务 ──
+                # ── 状态更新：LLM 直接指定任务 ID → 精确更新 ──
+                if update_task_id is not None:
+                    # 根据 ID 精确查找任务
+                    existing = None
+                    for t in existing_tasks:
+                        if t.id == update_task_id:
+                            existing = t
+                            break
+
+                    if existing and existing.status != task_status:
+                        logger.info(f"[processor] LLM 指定更新任务 #{existing.id}: {existing.title!r} → {task_status}")
+                        existing.status = task_status
+                        if task_status == "done":
+                            existing.completed_at = _now()
+                        elif task_status == "pending":
+                            existing.completed_at = None
+                        for rid in source_ids:
+                            if any(r.id == rid for r in unprocessed):
+                                existing_rec = await db.execute(
+                                    select(RecordTask).where(
+                                        RecordTask.record_id == rid,
+                                        RecordTask.task_id == existing.id,
+                                    )
+                                )
+                                if not existing_rec.first():
+                                    db.add(RecordTask(record_id=rid, task_id=existing.id))
+                        tasks_updated += 1
+                        if task_status == "done":
+                            auto_completed_tasks.append({
+                                "task_id": existing.id,
+                                "title": existing.title,
+                                "old_status": "pending",
+                            })
+                    elif not existing:
+                        # ID 无效，退化为新建
+                        logger.warning(f"[processor] LLM 指定的任务 ID #{update_task_id} 不存在，退化为新建")
+                        task = Task(user_id=uid,
+                            title=raw_title,
+                            description=_get(t_data, "描述", "description"),
+                            priority=_map_priority(_get(t_data, "优先级", "priority", default="中")),
+                            due_date=_parse_dt(_get(t_data, "截止日期", "due_date")),
+                            confidence=_get(t_data, "确信度", "confidence", default=0.5),
+                            status=task_status,
+                        )
+                        db.add(task)
+                        await db.flush()
+                        for rid in source_ids:
+                            if any(r.id == rid for r in unprocessed):
+                                db.add(RecordTask(record_id=rid, task_id=task.id))
+                        tasks_created += 1
+                    continue  # 跳过后续的模糊匹配逻辑
+
+                # ── 兼容旧逻辑：[更新] 前缀（过渡期保留） ──
                 UPDATE_PREFIX = "[更新] "
                 if raw_title.startswith(UPDATE_PREFIX):
                     original_title = raw_title[len(UPDATE_PREFIX):].strip()
@@ -217,11 +270,12 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
 
                     # 1) 精确匹配
                     existing = all_tasks.get(match_key)
-                    # 2) 精确匹配失败 → 模糊匹配
+                    # 2) 精确匹配失败 → 模糊匹配（LLM 明确标记 [更新] 时放宽阈值）
                     if not existing:
-                        matched_title, score = fuzzy_match(original_title, existing_titles)
-                        if matched_title and classify_match(score) == "auto_merge":
+                        matched_title, score = fuzzy_match(original_title, existing_titles, threshold=0.4)
+                        if matched_title and classify_match(score) in ("auto_merge", "ask_user"):
                             existing = all_tasks.get(normalize(matched_title))
+                            logger.info(f"[processor] [更新] 匹配: {original_title!r} → {matched_title!r} (score={score:.2f})")
 
                     if existing and existing.status != task_status:
                         existing.status = task_status
