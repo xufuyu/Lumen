@@ -9,6 +9,7 @@ const props = defineProps<{ disabled?: boolean }>()
 const emit = defineEmits<{
   submit: [content: string, type: string, voiceEmotion: string]
   ask: [question: string, voiceEmotion: string]
+  toast: [type: 'error' | 'info', message: string]
 }>()
 
 const content = ref('')
@@ -212,7 +213,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick, true))
 
     <div class="flex items-center justify-between gap-2">
       <div class="flex items-center gap-1.5 min-w-0">
-        <VoiceRecordButton ref="voiceRef" @started="onStarted" @delta="onDelta" @completed="onCompleted" />
+        <VoiceRecordButton ref="voiceRef" @started="onStarted" @delta="onDelta" @completed="onCompleted" @error="msg => emit('toast', 'error', msg)" />
 
         <!-- Prefix menu (collapsed) -->
         <div ref="menuRoot" class="relative">

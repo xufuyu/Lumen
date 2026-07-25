@@ -347,7 +347,7 @@ onUnmounted(() => {
 
       <!-- Input -->
       <div class="relative">
-        <RecordInput @submit="handleSubmit" @ask="handleAsk" :disabled="submitting" />
+        <RecordInput @submit="handleSubmit" @ask="handleAsk" @toast="(type, msg) => showToast(type, msg)" :disabled="submitting" />
         <!-- 后台整理指示器 -->
         <Transition name="qa-fade">
           <div v-if="processing" class="absolute -top-2 right-0 flex items-center gap-1 text-[10px] text-violet-500 bg-violet-50 rounded-full px-2 py-0.5 font-medium shadow-sm">

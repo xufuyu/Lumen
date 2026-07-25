@@ -4,16 +4,13 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const emit = defineEmits<{
-  // 新一轮录音真正开始（麦克风+WS 均就绪）—— RecordInput 用它复位 streaming 状态
   started: []
-  // text: 已确认累计文本（整体替换）；stash: 尾部可纠错预览；emotion: 声学情绪（可空）
   delta: [text: string, stash: string, emotion: string]
-  // 最终文本 + 最终情绪 —— 收到即视为本次录音结束（VAD 自动 or 用户 stop 均触发）
   completed: [text: string, emotion: string]
+  error: [message: string]   // toast 级错误提示
 }>()
 
 const state = ref<'idle' | 'connecting' | 'recording'>('idle')
-const error = ref('')
 
 let audioCtx: AudioContext | null = null
 let stream: MediaStream | null = null
@@ -70,10 +67,13 @@ function handleWsMessage(e: MessageEvent) {
         break
 
       case 'error':
-        error.value = (msg.message && !msg.message.includes('commit') && !msg.message.includes('buffer'))
-          ? msg.message
-          : t('input.micError')
-        // 出错也算一次结束 —— 通知父组件复位状态，别把下一次录音的文本覆盖当前输入
+        // 只有正在录音/连接中才报告错误（已 idle 说明是延迟到达的残留消息）
+        if (state.value === 'recording' || state.value === 'connecting') {
+          const msgText = (msg.message && !msg.message.includes('commit') && !msg.message.includes('buffer'))
+            ? msg.message
+            : t('input.micError')
+          emit('error', msgText)
+        }
         emit('completed', '', '')
         cleanupAudio()
         closeWs()
@@ -84,7 +84,6 @@ function handleWsMessage(e: MessageEvent) {
 }
 
 function handleWsClose() {
-  // 未预期的关闭（比如后端断线）— 通知父组件复位，别让下次录音顶掉当前文字
   if (state.value === 'recording' || state.value === 'connecting') {
     emit('completed', '', '')
     cleanupAudio()
@@ -93,7 +92,9 @@ function handleWsClose() {
 }
 
 function handleWsError() {
-  error.value = t('input.micError')
+  if (state.value === 'recording' || state.value === 'connecting') {
+    emit('error', t('input.micError'))
+  }
   emit('completed', '', '')
   cleanupAudio()
   closeWs()
@@ -187,11 +188,10 @@ async function start() {
 
   } catch (e: unknown) {
     cleanup()
-    if (e instanceof DOMException && e.name === 'NotAllowedError') {
-      error.value = t('input.micError')
-    } else {
-      error.value = e instanceof Error ? e.message : t('input.micError')
-    }
+    const msg = e instanceof DOMException && e.name === 'NotAllowedError'
+      ? t('input.micError')
+      : (e instanceof Error ? e.message : t('input.micError'))
+    emit('error', msg)
     state.value = 'idle'
   }
 }
@@ -253,6 +253,5 @@ onUnmounted(cleanup)
     </button>
     <span v-if="state === 'recording'" class="text-xs text-rose-400 font-medium shrink-0">{{ t('input.recording') }}</span>
     <span v-else-if="state === 'connecting'" class="text-xs text-amber-500 shrink-0">{{ t('input.connecting') }}</span>
-    <span v-if="error" class="text-xs text-rose-500 shrink-0 truncate max-w-[120px]">{{ error }}</span>
   </div>
 </template>
