@@ -207,7 +207,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col h-[calc(100dvh-7rem)] lg:h-auto lg:min-h-0 gap-4 lg:grid lg:grid-cols-5 lg:gap-5 lg:grid-flow-dense">
+  <div class="flex flex-col min-h-[calc(100vh-7rem)] h-[calc(100dvh-7rem)] lg:h-auto lg:min-h-0 gap-4 lg:grid lg:grid-cols-5 lg:gap-5 lg:grid-flow-dense">
 
     <!-- Toast -->
     <Transition name="toast-slide">

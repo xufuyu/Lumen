@@ -72,10 +72,10 @@ function handleSwitchId(newUid: string) {
 </script>
 
 <template>
-  <div class="h-dvh flex flex-col max-w-lg md:max-w-2xl xl:max-w-none mx-auto bg-white lg:border-x border-stone-100 shadow-lg overflow-hidden">
+  <div class="h-screen h-dvh flex flex-col max-w-lg md:max-w-2xl xl:max-w-none mx-auto bg-white lg:border-x border-stone-100 shadow-lg overflow-hidden">
 
     <!-- Header -->
-    <header class="shrink-0 z-10 bg-white/95 backdrop-blur border-b border-stone-100 px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between">
+    <header class="shrink-0 z-10 bg-white border-b border-stone-100 px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between">
       <div class="flex items-center gap-2 min-w-0">
         <!-- Back button (sub-pages) -->
         <button v-if="!isHome" @click="router.push('/')"
@@ -145,7 +145,7 @@ function handleSwitchId(newUid: string) {
     <Teleport to="body">
       <Transition name="drawer">
         <div v-if="showSettings" class="fixed inset-0 z-50 flex items-center justify-center" @click.self="showSettings = false">
-          <div class="absolute inset-0 bg-black/20 backdrop-blur-sm" />
+          <div class="absolute inset-0 bg-black/30" />
           <div class="relative bg-white rounded-2xl shadow-xl w-[380px] max-w-[90vw] mx-4 p-6">
             <div class="flex items-center justify-between mb-5">
               <h2 class="text-sm font-bold text-stone-700"><i class="fa-solid fa-gear mr-2 text-violet-400"></i>{{ t('settings.title') }}</h2>
