@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import current_user_id, get_db
+from database import current_lang, current_user_id, get_db, pick
 from models import Mood, Record
 from schemas import MoodGenerateResponse, MoodOut
 from services.llm import generate_mood
@@ -57,7 +57,11 @@ def _record_to_dict(rec: Record) -> dict:
 
 
 @router.post("/generate", response_model=MoodGenerateResponse)
-async def generate_mood_snapshot(db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
+async def generate_mood_snapshot(
+    db: AsyncSession = Depends(get_db),
+    uid: str = Depends(current_user_id),
+    lang: str = Depends(current_lang),
+):
     """根据最近的记录生成情绪指数快照。"""
     # 获取近期已处理的记录
     result = await db.execute(
@@ -71,7 +75,11 @@ async def generate_mood_snapshot(db: AsyncSession = Depends(get_db), uid: str = 
     if len(records) < 2:
         return MoodGenerateResponse(
             mood=None,
-            message="记录太少（至少 2 条已处理的记录），暂时无法生成情绪指数。继续记录吧。",
+            message=pick(
+                lang,
+                "记录太少（至少 2 条已处理的记录），暂时无法生成情绪指数。继续记录吧。",
+                "Not enough records (at least 2 processed notes needed) to generate a mood index yet. Keep journaling.",
+            ),
         )
 
     records_json = json.dumps(
@@ -87,11 +95,14 @@ async def generate_mood_snapshot(db: AsyncSession = Depends(get_db), uid: str = 
         voice_emo_summary = f"{sum(emo_counts.values())} 条语音（共 {len(records)} 条记录）：" + " / ".join(parts)
 
     try:
-        raw = await generate_mood(records_json, voice_emo_summary)
+        raw = await generate_mood(records_json, voice_emo_summary, lang)
         data = _safe_json(raw)
     except Exception:
         logger.exception("情绪指数 LLM 调用失败")
-        return MoodGenerateResponse(mood=None, message="情绪指数生成失败，请稍后重试。")
+        return MoodGenerateResponse(
+            mood=None,
+            message=pick(lang, "情绪指数生成失败，请稍后重试。", "Failed to generate the mood index. Please try again later."),
+        )
 
     mood = Mood(
         user_id=uid,
@@ -113,12 +124,16 @@ async def generate_mood_snapshot(db: AsyncSession = Depends(get_db), uid: str = 
             key_factors=json.loads(mood.key_factors) if mood.key_factors else [],
             created_at=mood.created_at,  # type: ignore[arg-type]
         ),
-        message="情绪指数已生成。",
+        message=pick(lang, "情绪指数已生成。", "Mood index generated."),
     )
 
 
 @router.get("/latest", response_model=MoodGenerateResponse)
-async def get_latest_mood(db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
+async def get_latest_mood(
+    db: AsyncSession = Depends(get_db),
+    uid: str = Depends(current_user_id),
+    lang: str = Depends(current_lang),
+):
     """获取最近一次情绪指数。"""
     result = await db.execute(
         select(Mood).where(Mood.user_id == uid).order_by(Mood.created_at.desc()).limit(1)
@@ -128,7 +143,11 @@ async def get_latest_mood(db: AsyncSession = Depends(get_db), uid: str = Depends
     if not mood:
         return MoodGenerateResponse(
             mood=None,
-            message="还没有生成过情绪指数。记录一些内容后，系统会帮你分析。",
+            message=pick(
+                lang,
+                "还没有生成过情绪指数。记录一些内容后，系统会帮你分析。",
+                "No mood index yet. Jot down some notes and I'll analyze them for you.",
+            ),
         )
 
     return MoodGenerateResponse(

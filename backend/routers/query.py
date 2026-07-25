@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import current_user_id, get_db
+from database import current_lang, current_user_id, get_db, pick
 from models import Event, Record, Task
 from schemas import QueryRequest, QueryResponse, QuerySource
 from services.llm import answer_query, answer_query_stream, classify_intent
@@ -37,11 +37,16 @@ async def classify_question(body: QueryRequest):
 
 
 @router.post("/stream")
-async def ask_question_stream(body: QueryRequest, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
+async def ask_question_stream(
+    body: QueryRequest,
+    db: AsyncSession = Depends(get_db),
+    uid: str = Depends(current_user_id),
+    lang: str = Depends(current_lang),
+):
     """流式问答：SSE 逐块输出回答。"""
     question = body.question.strip()
     if not question:
-        raise HTTPException(status_code=400, detail="问题不能为空")
+        raise HTTPException(status_code=400, detail=pick(lang, "问题不能为空", "Question cannot be empty"))
 
     records = await _get_recent_records(db, uid, limit=20)
     events = await _get_recent_events(db, uid, limit=10)
@@ -57,7 +62,7 @@ async def ask_question_stream(body: QueryRequest, db: AsyncSession = Depends(get
     async def event_generator():
         full_text = ""
         try:
-            async for chunk in answer_query_stream(question, context_json):
+            async for chunk in answer_query_stream(question, context_json, lang):
                 full_text += chunk
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
 
@@ -92,12 +97,17 @@ async def ask_question_stream(body: QueryRequest, db: AsyncSession = Depends(get
 
 
 @router.post("", response_model=QueryResponse)
-async def ask_question(body: QueryRequest, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
+async def ask_question(
+    body: QueryRequest,
+    db: AsyncSession = Depends(get_db),
+    uid: str = Depends(current_user_id),
+    lang: str = Depends(current_lang),
+):
     """用自然语言提问，基于用户的记录来回答。"""
     question = body.question.strip()
 
     if not question:
-        raise HTTPException(status_code=400, detail="问题不能为空")
+        raise HTTPException(status_code=400, detail=pick(lang, "问题不能为空", "Question cannot be empty"))
 
     # 1. 收集相关上下文（精简数量减少延迟）
     records = await _get_recent_records(db, uid, limit=20)
@@ -106,9 +116,13 @@ async def ask_question(body: QueryRequest, db: AsyncSession = Depends(get_db), u
 
     if not records and not events and not tasks:
         return QueryResponse(
-            answer="我还没有任何记录，无法回答你的问题。先记录一些日常活动吧，之后我就能帮你回忆了。",
+            answer=pick(
+                lang,
+                "我还没有任何记录，无法回答你的问题。先记录一些日常活动吧，之后我就能帮你回忆了。",
+                "I don't have any records yet, so I can't answer your question. Jot down some daily activities first, and I'll be able to help you recall.",
+            ),
             sources=[],
-            disclaimer="目前数据库中没有记录。",
+            disclaimer=pick(lang, "目前数据库中没有记录。", "There are no records in the database yet."),
         )
 
     # 2. 构建上下文 JSON
@@ -124,11 +138,11 @@ async def ask_question(body: QueryRequest, db: AsyncSession = Depends(get_db), u
 
     # 3. 调用 LLM
     try:
-        raw = await answer_query(question, context_json)
+        raw = await answer_query(question, context_json, lang)
         data = json.loads(_clean_json(raw))
     except Exception as e:
         logger.exception("问答 LLM 调用失败")
-        raise HTTPException(status_code=500, detail=f"问答处理失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=pick(lang, f"问答处理失败: {str(e)}", f"Query processing failed: {str(e)}"))
 
     # 4. 构建响应（兼容中英文字段名）
     sources = []
@@ -145,7 +159,7 @@ async def ask_question(body: QueryRequest, db: AsyncSession = Depends(get_db), u
             pass
 
     return QueryResponse(
-        answer=_get(data, "回答", "answer", default="抱歉，我无法回答这个问题。"),
+        answer=_get(data, "回答", "answer", default=pick(lang, "抱歉，我无法回答这个问题。", "Sorry, I can't answer that question.")),
         sources=sources,
         disclaimer=_get(data, "免责声明", "disclaimer"),
         is_question=_get(data, "是否问题", "is_question", default=True),

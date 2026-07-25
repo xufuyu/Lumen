@@ -312,7 +312,7 @@ onUnmounted(() => {
         class="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
         <p class="text-xs text-stone-600 leading-snug">
           <span class="font-semibold">「{{ c.new_title }}」</span>
-          与 <span class="font-semibold">「{{ c.existing_title }}」</span> 是同一件事吗？
+          {{ t('merge.question', { existing: c.existing_title }) }}
           <span class="text-stone-400">({{ (c.score * 100).toFixed(0) }}%)</span>
         </p>
         <div class="flex gap-2 mt-2">
@@ -422,7 +422,7 @@ onUnmounted(() => {
             <div class="flex-1 min-w-0">
               <p v-if="qa.loading" class="text-sm text-stone-400 italic">
                 <span class="inline-block w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse mr-1"></span>
-                思考中…
+                {{ t('query.thinking') }}
               </p>
               <p v-else class="text-sm text-stone-700 leading-relaxed whitespace-pre-wrap">{{ qa.answer }}</p>
               <div v-if="qa.disclaimer" class="mt-1.5 text-[10px] text-amber-500 italic">
@@ -447,7 +447,7 @@ onUnmounted(() => {
         <Transition name="qa-fade">
           <div v-if="processing" class="absolute -top-2 right-0 flex items-center gap-1 text-[10px] text-violet-500 bg-violet-50 rounded-full px-2 py-0.5 font-medium shadow-sm">
             <i class="fa-solid fa-spinner animate-spin text-[9px]"></i>
-            AI 整理中…
+            {{ t('input.procLabel') }}
           </div>
         </Transition>
       </div>
@@ -475,7 +475,7 @@ onUnmounted(() => {
         <Transition name="expand">
           <div v-if="showStatusDetail" class="mt-3 pt-3 border-t border-stone-200/50 space-y-2">
             <div class="flex items-center justify-between text-[10px] text-stone-300 px-0.5">
-              <span>1 低落</span><span>5 平稳</span><span>10 良好</span>
+              <span>1 {{ t('mood.scale.low') }}</span><span>5 {{ t('mood.scale.mid') }}</span><span>10 {{ t('mood.scale.high') }}</span>
             </div>
             <div class="h-2 bg-stone-100 rounded-full overflow-hidden">
               <div class="h-full rounded-full transition-all duration-700"
@@ -491,7 +491,7 @@ onUnmounted(() => {
       <div v-else @click="handleRefreshMood()"
         class="bg-stone-50 rounded-2xl border border-stone-100 px-4 py-3 flex items-center justify-center gap-2 cursor-pointer hover:shadow-sm">
         <i class="fa-solid fa-heart-circle-plus text-stone-300 text-sm"></i>
-        <span class="text-xs text-stone-400">记录一些日常后，点击生成情绪指数</span>
+        <span class="text-xs text-stone-400">{{ t('mood.emptyHint') }}</span>
       </div>
     </div>
 
@@ -499,7 +499,7 @@ onUnmounted(() => {
     <section v-if="hasContent" class="hidden lg:block lg:col-start-4 lg:col-span-2 lg:row-start-1">
       <div class="flex items-center justify-between mb-2.5">
         <h2 class="text-sm font-bold text-stone-700">
-          <i class="fa-solid fa-note-sticky mr-1.5 text-violet-400"></i>最近记录
+          <i class="fa-solid fa-note-sticky mr-1.5 text-violet-400"></i>{{ t('home.recordsTitle') }}
           <span class="text-xs text-stone-400 font-normal ml-1">{{ recordCount }} {{ t('home.recordsUnit') }}</span>
         </h2>
         <button @click="router.push('/timeline')" class="text-xs text-violet-500 font-medium">{{ t('home.viewAll') }}</button>
@@ -527,7 +527,7 @@ onUnmounted(() => {
   <section v-if="hasContent" class="lg:hidden px-4 sm:px-6 pt-4 pb-6 space-y-1.5">
     <div class="flex items-center justify-between mb-2.5">
       <h2 class="text-sm font-bold text-stone-700">
-        <i class="fa-solid fa-note-sticky mr-1.5 text-violet-400"></i>最近记录
+        <i class="fa-solid fa-note-sticky mr-1.5 text-violet-400"></i>{{ t('home.recordsTitle') }}
         <span class="text-xs text-stone-400 font-normal ml-1">{{ recordCount }} {{ t('home.recordsUnit') }}</span>
       </h2>
       <button @click="router.push('/timeline')" class="text-xs text-violet-500 font-medium">{{ t('home.viewAll') }}</button>

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { askQuestion, type QueryResponse } from '../api/client'
+
+const { t } = useI18n()
 
 interface Message { role: 'user' | 'assistant'; content: string; response?: QueryResponse }
 
@@ -20,7 +23,7 @@ async function send() {
     const res = await askQuestion(text)
     messages.value.push({ role: 'assistant', content: res.answer, response: res })
   } catch {
-    messages.value.push({ role: 'assistant', content: '抱歉，处理你的问题时出现了错误。请稍后再试。' })
+    messages.value.push({ role: 'assistant', content: t('query.error') })
   } finally {
     loading.value = false
     await scrollToBottom()
@@ -38,8 +41,8 @@ async function scrollToBottom() {
     <div ref="chatContainer" class="flex-1 overflow-y-auto space-y-4 mb-4 flex flex-col">
       <div v-if="messages.length === 0" class="text-center text-stone-400 py-16">
         <i class="fa-solid fa-comment-dots text-3xl mb-4 block"></i>
-        <p class="text-base text-stone-500 font-medium">问我任何关于你近期活动的问题</p>
-        <p class="text-sm text-stone-300 mt-1">例如："我这周做了什么？""有什么待办事项？"</p>
+        <p class="text-base text-stone-500 font-medium">{{ t('query.emptyTitle') }}</p>
+        <p class="text-sm text-stone-300 mt-1">{{ t('query.emptySub') }}</p>
       </div>
 
       <div v-for="(msg, i) in messages" :key="i"
@@ -47,7 +50,7 @@ async function scrollToBottom() {
           msg.role === 'user' ? 'bg-violet-500 text-white self-end ml-auto' : 'bg-stone-100 text-stone-700']">
         <p>{{ msg.content }}</p>
         <div v-if="msg.response?.sources.length" class="mt-2 pt-2 border-t border-white/20">
-          <p class="text-xs opacity-70 mb-1">来源：</p>
+          <p class="text-xs opacity-70 mb-1">{{ t('query.sources') }}</p>
           <div v-for="src in msg.response.sources" :key="src.record_id" class="text-xs opacity-60 truncate">{{ src.excerpt }}</div>
         </div>
         <div v-if="msg.response?.disclaimer" class="mt-2 pt-2 border-t border-white/20">
@@ -56,15 +59,15 @@ async function scrollToBottom() {
       </div>
 
       <div v-if="loading" class="flex items-center gap-2 text-stone-400 text-sm px-1">
-        <span class="w-2 h-2 rounded-full bg-violet-400 animate-pulse"></span>正在思考...
+        <span class="w-2 h-2 rounded-full bg-violet-400 animate-pulse"></span>{{ t('query.thinking') }}
       </div>
     </div>
 
     <div class="flex gap-2">
-      <input v-model="input" @keydown.enter="send" type="text" placeholder="问一个问题…" :disabled="loading"
+      <input v-model="input" @keydown.enter="send" type="text" :placeholder="t('query.inputPlaceholder')" :disabled="loading"
         class="flex-1 rounded-2xl border border-stone-200 bg-stone-50 px-5 py-3 text-sm placeholder:text-stone-300 focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-transparent disabled:opacity-50" />
       <button @click="send" :disabled="!input.trim() || loading"
-        class="bg-violet-500 hover:bg-violet-600 disabled:bg-stone-200 disabled:text-stone-400 text-white rounded-2xl px-5 py-3 text-sm font-semibold transition-all active:scale-95">发送</button>
+        class="bg-violet-500 hover:bg-violet-600 disabled:bg-stone-200 disabled:text-stone-400 text-white rounded-2xl px-5 py-3 text-sm font-semibold transition-all active:scale-95">{{ t('input.send') }}</button>
     </div>
   </div>
 </template>

@@ -1,6 +1,12 @@
 import { getUserId } from '../user'
+import { i18n } from '../i18n'
 
 const BASE = '/api'
+
+// 把当前界面语言带给后端，用于 LLM 输出语言和服务端提示消息的本地化
+function currentLang(): string {
+  return i18n.global.locale.value
+}
 
 class AbortError extends Error {
   constructor() { super('Request aborted'); this.name = 'AbortError' }
@@ -13,7 +19,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const uid = getUserId()
   try {
     const res = await fetch(`${BASE}${url}`, {
-      headers: { 'Content-Type': 'application/json', 'X-User-ID': uid, ...options?.headers },
+      headers: { 'Content-Type': 'application/json', 'X-User-ID': uid, 'X-User-Language': currentLang(), ...options?.headers },
       ...options,
     })
     if (!res.ok) {
@@ -238,7 +244,7 @@ export async function askQuestionStream(
 ): Promise<void> {
   const res = await fetch(`${BASE}/query/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-User-ID': getUserId(), 'X-User-Language': currentLang() },
     body: JSON.stringify({ question }),
   })
   if (!res.ok) {

@@ -262,7 +262,7 @@ function priorityDot(p: string): string {
           <div v-for="day in weekHeatmap" :key="day.key" class="flex-1 flex flex-col items-center justify-end gap-1">
             <div :class="['w-full rounded-md transition-all', heatOpacity(day.count)]"
               :style="{ height: (30 + (day.count / heatMax) * 40) + 'px' }"
-              :title="`${day.label}: ${day.count} 项`"></div>
+              :title="`${day.label}: ${t('dashboard.heatUnit', { n: day.count })}`"></div>
             <span class="text-[9px] text-stone-400">{{ day.label }}</span>
           </div>
         </div>
