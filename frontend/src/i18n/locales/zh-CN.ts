@@ -117,4 +117,20 @@ export default {
     switched: '已切换到「{uid}」，页面即将刷新。',
     sameId: '标识相同，无需切换。',
   },
+  installHint: {
+    install: '安装',
+    dismiss: '知道啦',
+    inapp: {
+      title: '换个浏览器打开会更顺手',
+      hint: '这里的语音、通知可能受限 · 点右上角 ⋯ 选「在浏览器打开」',
+    },
+    'ios-safari': {
+      title: '想随手就能打开？可以加到主屏',
+      hint: '点下方  分享 → 添加到主屏幕，下次一步进入',
+    },
+    'android-install': {
+      title: '把拾光放到主屏，像 App 一样打开',
+      hint: '不占空间，只是多一个入口',
+    },
+  },
 }

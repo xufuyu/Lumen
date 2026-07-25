@@ -117,4 +117,20 @@ export default {
     switched: 'Switched to "{uid}". Reloading...',
     sameId: 'Same ID, nothing to switch.',
   },
+  installHint: {
+    install: 'Install',
+    dismiss: 'Got it',
+    inapp: {
+      title: 'Opens more smoothly in your browser',
+      hint: 'Voice and notifications may be limited here · Tap ⋯ top-right → Open in Browser',
+    },
+    'ios-safari': {
+      title: 'Add to Home Screen for quick access',
+      hint: 'Tap  Share → Add to Home Screen · one tap next time',
+    },
+    'android-install': {
+      title: 'Add Lumen to your home screen',
+      hint: 'Opens like a native app — just one more entry point',
+    },
+  },
 }

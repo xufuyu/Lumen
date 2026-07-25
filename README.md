@@ -1,4 +1,34 @@
-# 拾光 · Lumen · LMN
+<p align="center">
+  <img src="frontend/public/icon.jpg" alt="拾光 · Lumen Logo" width="160" />
+</p>
+
+<h1 align="center">拾光 · Lumen · LMN</h1>
+
+<p align="center">
+  <em>拾起碎片的光 —— 把散落的一天，一点点拾回来。</em>
+</p>
+
+<h3 align="center">
+  <a href="https://advx.guppy.ltd">
+    <img alt="Try Live Demo" src="https://img.shields.io/badge/%E2%9C%A8%20%E7%82%B9%E6%88%91%E4%BD%93%E9%AA%8C%20Demo%20%E2%86%92-advx.guppy.ltd-8b5cf6?style=for-the-badge&labelColor=6366f1&logoColor=white" height="42" />
+  </a>
+</h3>
+
+<p align="center">
+  <sub><strong>无需安装</strong> · <strong>打开即用</strong> · <strong>支持 PWA 添加到主屏</strong></sub>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-AGPLv3-blue.svg" /></a>
+  <img alt="Vue" src="https://img.shields.io/badge/frontend-Vue%203%20%2B%20TS-42b883.svg" />
+  <img alt="FastAPI" src="https://img.shields.io/badge/backend-FastAPI-009688.svg" />
+  <img alt="PWA" src="https://img.shields.io/badge/PWA-ready-5A0FC8.svg" />
+</p>
+
+---
+
+> [!TIP]
+> **🌐 在线 Demo：<https://advx.guppy.ltd>** — 一分钟体验完整功能：语音随记、AI 自动整理、多端实时同步。
 
 > **拾光**（shí guāng）= 拾起碎片的光，谐音「时光」。**Lumen** = 拉丁语「光」，也是国际标准光通量单位。
 
@@ -38,6 +68,7 @@
 - **同框问答** — 在同一个输入框里，「问一下今晚要做啥」直接切成问答，不用切页面。
 - **多语种支持** — 中文 / English 一键切换，语言偏好保存在本地。
 - **多用户隔离** — 每个唯一标识独立存储数据。切换 ID 时自动合并数据。不同设备输入相同标识即可共享。
+- **实时多端同步** — WebSocket 广播（`/api/ws/sync`），同一 ID 的多个设备数据变更秒级推送刷新；断线自动重连，离线时降级为轮询。
 - **PWA 安装** — 支持添加到手机/桌面主屏幕，独立窗口运行，体验接近原生 App。
 - **HTTPS 强制** — 生产环境自动启用 TLS + HSTS，HTTP 自动跳转 HTTPS。
 - **API 限流** — 滑动窗口算法按用户 + 端点限流。AI 端点 5-20/min，写入 20-30/min，读取 120/min。防 Token 盗刷。
@@ -80,6 +111,7 @@ adventurex/
 │       ├── process.py       # 手动触发整理
 │       ├── merge.py         # 相似任务合并决策
 │       ├── user.py          # 用户数据合并（ID 切换时跨 ID 迁移）
+│       ├── sync.py          # 实时同步 WebSocket（同 ID 多端广播刷新）
 │       └── asr.py           # WebSocket 桥：前端 ↔ Qwen3-ASR 中继
 └── frontend/
     └── src/
@@ -88,16 +120,22 @@ adventurex/
         │   ├── index.ts          # vue-i18n 配置 + 浏览器语言检测
         │   └── locales/          # 翻译文件
         ├── user.ts               # 用户 ID 管理（生成/存储）
+        ├── sync.ts               # 实时同步客户端（WS + 轮询降级）
         ├── router/               # Vue Router
         ├── views/                # HomeView / TimelineView / TasksView / QueryView
         └── components/
             ├── RecordInput.vue        # 输入框 + 快捷前缀 + 问答检测
             ├── VoiceRecordButton.vue  # PCM 采集 + WS 传输
             ├── AppLayout.vue          # 顶栏 + 语言切换 + 设置弹窗 + 底栏
+            ├── ContextBanner.vue      # 当前状态横幅
+            ├── MoodCard.vue           # 情绪指数卡片
+            ├── TimelineCard.vue / TaskCard.vue / StatCard.vue / QueryChat.vue / TooltipIcon.vue
             └── ...
 ```
 
 ## 5 分钟启动
+
+> 想直接体验？访问 **[advx.guppy.ltd](https://advx.guppy.ltd)** 即可，无需部署。以下步骤面向本地开发者。
 
 ### 后端
 
@@ -148,6 +186,14 @@ Chat 和 ASR 都通过 `advx.fzxufuyu.eu.org` 中继转发（无需 key，内部
 | ASR 模型 | `qwen3-asr-flash-realtime` |
 | ASR 事件 | `text`（累计+纠错） / `stash`（尾部预览） / `emotion`（7 类） / `usage` |
 | 音频格式 | PCM s16le / 16kHz / mono / base64（**不支持 webm**） |
+
+## 相关文档
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — 贡献流程
+- [ICLA.md](ICLA.md) — 个人贡献者协议
+- [RELAY.md](RELAY.md) — 中继协议与调试记录
+- [LICENSE](LICENSE) — GNU AGPLv3 完整协议文本
+- [deploy.sh](deploy.sh) · [.github/workflows/deploy.yml](.github/workflows/deploy.yml) — 一键部署 / CI 流水线
 
 ## 许可协议（双许可模式）
 

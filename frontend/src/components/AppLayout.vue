@@ -7,6 +7,7 @@ import { onMounted, onUnmounted } from 'vue'
 import { setLocale, availableLocales } from '../i18n'
 import { getUserId, setUserId } from '../user'
 import { connectSync, disconnectSync } from '../sync'
+import InstallHint from './InstallHint.vue'
 
 const { t, locale } = useI18n()
 const showSettings = ref(false)
@@ -125,6 +126,9 @@ function handleSwitchId(newUid: string) {
     <main class="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 lg:px-8 py-4 sm:py-5 lg:py-6">
       <router-view />
     </main>
+
+    <!-- Gentle install / open-in-browser hint (auto-detects environment) -->
+    <InstallHint />
 
     <!-- ICP 备案（仅 guppy.ltd 域名显示） -->
     <footer v-if="showIcp" class="shrink-0 text-center py-2.5 border-t border-stone-50">
