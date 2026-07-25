@@ -17,11 +17,6 @@ const routes = [
     component: () => import('../views/TasksView.vue'),
   },
   {
-    path: '/query',
-    name: 'query',
-    component: () => import('../views/QueryView.vue'),
-  },
-  {
     path: '/dashboard',
     name: 'dashboard',
     component: () => import('../views/DashboardView.vue'),

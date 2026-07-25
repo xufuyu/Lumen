@@ -43,11 +43,10 @@ if (typeof window !== 'undefined') {
     }
   } catch {}
 
-  // Chromium fires this exactly once, and only when installability criteria
-  // are met (manifest + service worker or valid installability heuristics).
-  window.addEventListener('beforeinstallprompt', (e: any) => {
-    e.preventDefault()
-    deferredPrompt.value = e
+  // 不拦截 beforeinstallprompt —— 让浏览器显示原生安装提示。
+  // iOS Safari 和内嵌浏览器没有此事件，仍由 InstallHint.vue 提供文字引导。
+  window.addEventListener('beforeinstallprompt', () => {
+    deferredPrompt.value = null
   })
 
   window.addEventListener('appinstalled', () => {

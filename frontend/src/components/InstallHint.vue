@@ -7,11 +7,31 @@
  * seven-day cooling-off period. Tone is deliberately low-key — no urgency,
  * no red, no exclamation marks — to match Lumen's "don't push, don't judge"
  * philosophy.
+ *
+ * iOS Safari 和内嵌浏览器提示 8 秒后自动隐藏（不触发冷却，下次访问仍会提示）。
+ * 手动点 × 关闭则走 7 天冷却。
  */
+import { ref, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { hintMode, triggerInstall, dismissHint } from '../install'
 
 const { t } = useI18n()
+
+const AUTO_HIDE_MS = 8000
+const autoHidden = ref(false)
+let hideTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(hintMode, (mode) => {
+  if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
+  if (mode !== 'none') {
+    autoHidden.value = false
+    hideTimer = setTimeout(() => { autoHidden.value = true }, AUTO_HIDE_MS)
+  }
+}, { immediate: true })
+
+onUnmounted(() => {
+  if (hideTimer) clearTimeout(hideTimer)
+})
 
 const iconClass: Record<string, string> = {
   'inapp': 'fa-solid fa-arrow-up-right-from-square',
@@ -27,7 +47,7 @@ async function onInstall() {
 
 <template>
   <Transition name="install-hint">
-    <div v-if="hintMode !== 'none'"
+    <div v-if="hintMode !== 'none' && !autoHidden"
       class="shrink-0 px-3 pt-2 pb-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
       role="status" aria-live="polite">
       <div

@@ -21,19 +21,15 @@ onUnmounted(disconnectSync)
 const router = useRouter()
 const route = useRoute()
 
-// Desktop shows all 5 tabs. Mobile shows the first 4 only — dashboard is
-// desktop-first ("自适应尺寸") and reachable from Settings on small screens.
+// Desktop and mobile share the same 4 tabs: home, timeline, tasks, dashboard.
 const mobileTabs = computed(() => [
   { name: 'home', label: t('nav.home'), title: t('nav.home'), path: '/', icon: 'fa-house' },
   { name: 'timeline', label: t('nav.timeline'), title: t('home.eventsTitle'), path: '/timeline', icon: 'fa-calendar-days' },
   { name: 'tasks', label: t('nav.tasks'), title: t('home.tasksTitle'), path: '/tasks', icon: 'fa-circle-check' },
-  { name: 'query', label: t('nav.query'), title: t('nav.query'), path: '/query', icon: 'fa-comment-dots' },
-])
-
-const desktopTabs = computed(() => [
-  ...mobileTabs.value,
   { name: 'dashboard', label: t('nav.dashboard'), title: t('dashboard.title'), path: '/dashboard', icon: 'fa-chart-simple' },
 ])
+
+const desktopTabs = computed(() => [...mobileTabs.value])
 
 const isHome = computed(() => route.path === '/')
 const currentTitle = computed(() => {
@@ -154,7 +150,7 @@ function openExport() {
       <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" class="text-[11px] text-stone-400 hover:text-stone-600 transition-colors">渝ICP备2023009735号</a>
     </footer>
 
-    <!-- Mobile bottom tabs (only on sub-pages: timeline/tasks/query) — 4 tabs, dashboard omitted -->
+    <!-- Mobile bottom tabs (only on sub-pages) — 4 tabs -->
     <nav v-if="!isHome" class="lg:hidden shrink-0 bg-white border-t border-stone-100 flex justify-around py-1.5 px-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
       <button v-for="tab in mobileTabs" :key="tab.name" @click="router.push(tab.path)"
         :class="['flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-all min-w-0',
