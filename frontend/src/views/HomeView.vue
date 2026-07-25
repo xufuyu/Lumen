@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   createRecord, triggerProcess, getCurrentContext, listRecords, listTasks, listEvents,
-  generateMood, getLatestMood, deleteRecord, updateRecord, updateTask, resolveMerge, askQuestionStream,
+  generateMood, getLatestMood, deleteRecord, updateRecord, updateTask, resolveMerge, askQuestionStream, classifyIntent,
   type ContextOut, type RecordOut, type TaskOut, type EventOut, type MoodOut, type MergeCandidate,
   type QueryResponse,
 } from '../api/client'
@@ -105,10 +105,6 @@ async function handleSend(content: string, type: string = 'text', voiceEmotion: 
 
   // 2. 后台整理 + 问答 并发（不互等）
   processing.value = true
-  const id = ++qaIdCounter
-  const entry: QAExchange = { id, question: content, loading: true }
-  qaLog.value.push(entry)
-  if (qaLog.value.length > 5) qaLog.value.splice(0, qaLog.value.length - 5)
 
   // 整理（后台）
   const procPromise = (async () => {
@@ -142,49 +138,47 @@ async function handleSend(content: string, type: string = 'text', voiceEmotion: 
     }
   })()
 
-  // 问答（并发，流式输出）
-  try {
-    await askQuestionStream(
-      content,
-      // onChunk: 流式追加到回答
-      (chunk) => {
-        const existing = qaLog.value.find(q => q.id === id)
-        if (existing) {
-          existing.answer = (existing.answer || '') + chunk
-        }
-      },
-      // onDone: 解析最终结果
-      (data) => {
-        const existing = qaLog.value.find(q => q.id === id)
-        if (!existing) return
-        if (data.is_question === false) {
-          // 不是问题，移除 QA 条目
-          qaLog.value = qaLog.value.filter(q => q.id !== id)
-        } else {
-          existing.answer = data.answer || existing.answer || ''
-          existing.sources = data.sources
-          existing.disclaimer = data.disclaimer
-          existing.loading = false
-        }
-      },
-      // onError
-      (err) => {
-        const existing = qaLog.value.find(q => q.id === id)
-        if (existing) {
-          existing.answer = `Error: ${err}`
-          existing.loading = false
-        }
-      },
-    )
-  } catch (e: unknown) {
-    const existing = qaLog.value.find(q => q.id === id)
-    if (existing) {
-      existing.answer = `Error: ${e instanceof Error ? e.message : ''}`
-      existing.loading = false
-    }
-  }
+  // 问答：先快速分类，只在是询问时才创建 QA 条目 + 走流式
+  const qaPromise = (async () => {
+    try {
+      const cls = await classifyIntent(content)
+      if (!cls.is_question) return  // 不是询问 → 不显示思考中弹窗
 
-  await procPromise
+      const id = ++qaIdCounter
+      const entry: QAExchange = { id, question: content, loading: true }
+      qaLog.value.push(entry)
+      if (qaLog.value.length > 5) qaLog.value.splice(0, qaLog.value.length - 5)
+
+      await askQuestionStream(
+        content,
+        (chunk) => {
+          const existing = qaLog.value.find(q => q.id === id)
+          if (existing) existing.answer = (existing.answer || '') + chunk
+        },
+        (data) => {
+          const existing = qaLog.value.find(q => q.id === id)
+          if (!existing) return
+          if (data.is_question === false) {
+            qaLog.value = qaLog.value.filter(q => q.id !== id)
+          } else {
+            existing.answer = data.answer || existing.answer || ''
+            existing.sources = data.sources
+            existing.disclaimer = data.disclaimer
+            existing.loading = false
+          }
+        },
+        (err) => {
+          const existing = qaLog.value.find(q => q.id === id)
+          if (existing) {
+            existing.answer = `Error: ${err}`
+            existing.loading = false
+          }
+        },
+      )
+    } catch { /* 分类失败静默降级：不打扰用户 */ }
+  })()
+
+  await Promise.all([procPromise, qaPromise])
   processing.value = false
 }
 function dismissQA(id: number) {

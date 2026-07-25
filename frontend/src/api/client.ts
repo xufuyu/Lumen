@@ -215,6 +215,14 @@ export function askQuestion(question: string) {
   })
 }
 
+// 快速意图分类：判断是否为询问（<500ms）
+export function classifyIntent(text: string) {
+  return request<{ is_question: boolean }>('/query/classify', {
+    method: 'POST',
+    body: JSON.stringify({ question: text }),
+  })
+}
+
 // 流式问答
 export interface StreamChunk { type: 'chunk'; content: string }
 export interface StreamDone { type: 'done'; is_question: boolean; answer: string; sources: QuerySource[]; disclaimer: string | null }

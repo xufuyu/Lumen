@@ -9,6 +9,8 @@ Relay 约束：
 注意：使用 httpx 而非 OpenAI SDK。SDK 的 x-stainless-* 头会触发 Cloudflare WAF → 403。
 """
 
+import json
+
 import httpx
 
 from config import RELAY_API_KEY, RELAY_BASE_URL, MODEL_FLASH, MODEL_PRO, httpx_verify
@@ -430,6 +432,38 @@ async def answer_query_stream(question: str, context_json: str):
         max_tokens=512,
     ):
         yield chunk
+
+
+async def classify_intent(text: str) -> str:
+    """极快判断用户输入是否为询问。返回 "question" 或 "record"。
+
+    只走 flash 模型，temp=0，max_tokens=5，通常 <500ms。
+    """
+    prompt = f"""判断以下用户输入的意图。只回答一个词：question 或 record。
+
+- 如果是提问、请求信息、想知道什么 → question
+  示例：「今天做了什么」「上周吃了几次外卖」「我啥时候休息的」「有什么待办」
+- 如果是陈述事实、记录事件、感叹 → record
+  示例：「我吃了午饭」「今天很累」「刚跑完步」「买了菜」
+
+用户输入：{text}
+
+只回答一个词："""
+
+    try:
+        result = await chat(
+            [{"role": "user", "content": prompt}],
+            model=MODEL_FLASH,
+            temperature=0.0,
+            max_tokens=5,
+        )
+        result = result.strip().lower()
+        if "question" in result:
+            return "question"
+        return "record"
+    except Exception:
+        # 出错默认按记录处理，避免误弹出思考中
+        return "record"
 
 
 # ── 情绪指数生成 ─────────────────────────────────────────────────────────────

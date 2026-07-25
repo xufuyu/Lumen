@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import current_user_id, get_db
 from models import Event, Record, Task
 from schemas import QueryRequest, QueryResponse, QuerySource
-from services.llm import answer_query, answer_query_stream
+from services.llm import answer_query, answer_query_stream, classify_intent
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,16 @@ def _get(d: dict, *keys: str, default=None):
         if k in d and d[k] is not None:
             return d[k]
     return default
+
+
+@router.post("/classify")
+async def classify_question(body: QueryRequest):
+    """快速判断输入是否为询问（<500ms），前端据此决定是否显示"思考中"。"""
+    text = body.question.strip()
+    if not text:
+        return {"is_question": False}
+    intent = await classify_intent(text)
+    return {"is_question": intent == "question"}
 
 
 @router.post("/stream")
