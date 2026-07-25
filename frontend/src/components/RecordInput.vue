@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import VoiceRecordButton from './VoiceRecordButton.vue'
 import { polishAsrText } from '../api/client'
@@ -7,8 +7,7 @@ import { polishAsrText } from '../api/client'
 const { t } = useI18n()
 const props = defineProps<{ disabled?: boolean }>()
 const emit = defineEmits<{
-  submit: [content: string, type: string, voiceEmotion: string]
-  ask: [question: string, voiceEmotion: string]
+  send: [content: string, type: string, voiceEmotion: string]
   toast: [type: 'error' | 'info', message: string]
 }>()
 
@@ -38,15 +37,6 @@ const prompts = [
   { label: t('input.prefixes.feeling'), prefix: t('input.prefixesFull.feeling'), icon: 'fa-heart', color: 'text-rose-500' },
   { label: t('input.prefixes.ask'), prefix: t('input.prefixesFull.ask'), icon: 'fa-comment-dots', color: 'text-sky-500' },
 ]
-
-// 问答意图检测：不依赖标点。
-const askKeywordAtStart = /^(问一下|查一下|问下|查下|我想知道|想知道|请问|帮我查|帮我看看|看看|告诉我|是不是|能不能|可不可以|要不要|有没有|该不该|要怎么|怎么|如何|为什么|为啥|哪里|哪个|哪些|什么时候|什么|谁|是否|多少|几个|几天|多久)/
-const looksLikeQuestion = computed(() => {
-  const t = content.value.trim()
-  if (!t) return false
-  if (/[?？]$/.test(t)) return true
-  return askKeywordAtStart.test(t)
-})
 
 function focusWithPrefix(prefix: string) {
   content.value = prefix
@@ -154,21 +144,10 @@ function onManualInput() {
   }
 }
 
-async function handleSubmit() {
+async function handleSend() {
   const text = content.value.trim()
   if (!text || props.disabled) return
-  emit('submit', text, submitType.value, detectedEmotion.value)
-  content.value = ''
-  detectedEmotion.value = ''
-  submitType.value = 'text'
-  await nextTick()
-  textarea.value?.focus()
-}
-
-async function handleAsk() {
-  const text = content.value.trim()
-  if (!text || props.disabled) return
-  emit('ask', text, detectedEmotion.value)
+  emit('send', text, submitType.value, detectedEmotion.value)
   content.value = ''
   detectedEmotion.value = ''
   submitType.value = 'text'
@@ -183,8 +162,7 @@ async function handleEnter() {
     voiceRef.value?.stopRecording()
     return
   }
-  if (looksLikeQuestion.value) await handleAsk()
-  else await handleSubmit()
+  await handleSend()
 }
 
 function onDocClick(e: MouseEvent) {
@@ -204,7 +182,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick, true))
         v-model="content"
         @input="onManualInput"
         @keydown.enter.exact.prevent="handleEnter"
-        :placeholder="looksLikeQuestion ? t('input.placeholderQuestion') : t('input.placeholderDefault')"
+        :placeholder="isStreaming ? t('input.recording') : t('input.placeholderDefault')"
         rows="3"
         :disabled="disabled"
         class="w-full resize-none text-base sm:text-lg text-stone-800 placeholder:text-stone-300 bg-transparent border-none focus:outline-none leading-relaxed disabled:opacity-50"
@@ -242,12 +220,10 @@ onUnmounted(() => document.removeEventListener('click', onDocClick, true))
         @click="handleEnter"
         :disabled="(!content.trim() && !isStreaming) || disabled"
         :class="['shrink-0 rounded-2xl px-5 sm:px-6 py-2.5 text-sm font-semibold transition-all active:scale-95 shadow-sm disabled:bg-stone-200 disabled:text-stone-400 disabled:shadow-none text-white',
-          isStreaming ? 'bg-rose-500 active:bg-rose-600 shadow-rose-200' :
-          looksLikeQuestion ? 'bg-sky-500 active:bg-sky-600 shadow-sky-200' :
-          'bg-violet-500 active:bg-violet-600 shadow-violet-200']"
+          isStreaming ? 'bg-rose-500 active:bg-rose-600 shadow-rose-200' : 'bg-violet-500 active:bg-violet-600 shadow-violet-200']"
         :title="t('input.send')"
       >
-        <i :class="['fa-solid mr-1 text-xs', isStreaming ? 'fa-stop' : looksLikeQuestion ? 'fa-comment-dots' : 'fa-paper-plane']"></i>
+        <i :class="['fa-solid mr-1 text-xs', isStreaming ? 'fa-stop' : 'fa-paper-plane']"></i>
         {{ disabled ? '…' : isStreaming ? t('input.stopAndSend') : t('input.send') }}
       </button>
     </div>

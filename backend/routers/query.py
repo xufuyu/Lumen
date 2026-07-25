@@ -33,10 +33,10 @@ async def ask_question(body: QueryRequest, db: AsyncSession = Depends(get_db), u
     if not question:
         raise HTTPException(status_code=400, detail="问题不能为空")
 
-    # 1. 收集相关上下文
-    records = await _get_recent_records(db, uid, limit=50)
-    events = await _get_recent_events(db, uid, limit=30)
-    tasks = await _get_active_tasks(db, uid, limit=20)
+    # 1. 收集相关上下文（精简数量减少延迟）
+    records = await _get_recent_records(db, uid, limit=20)
+    events = await _get_recent_events(db, uid, limit=10)
+    tasks = await _get_active_tasks(db, uid, limit=10)
 
     if not records and not events and not tasks:
         return QueryResponse(

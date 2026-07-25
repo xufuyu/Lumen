@@ -89,14 +89,13 @@ async function handleRefreshMood() {
   try { const res = await generateMood(); if (res.mood) { mood.value = res.mood; showToast('success', t('mood.refresh')) } else { showToast('error', res.message || t('input.procError')) } } catch (e: unknown) { showToast('error', `${t('input.procError')}: ${e instanceof Error ? e.message : ''}`) } finally { moodLoading.value = false }
 }
 
-// ── 提交记录：只等 createRecord（快），整理放后台 ────────────────
-async function handleSubmit(content: string, type: string = 'text', voiceEmotion: string = '') {
+// ── 发送：记录落库后，整理和问答并发执行 ────────────
+async function handleSend(content: string, type: string = 'text', voiceEmotion: string = '') {
   submitting.value = true
+
+  // 1. 创建记录（快）
   try {
-    // voiceEmotion 静默传给后端参与 Mood 融合，不告诉用户识别到什么情绪
     await createRecord(content, type, voiceEmotion || undefined)
-    showToast('success', t('input.procLabel'))
-    // 快速刷新列表让新记录立刻显示（此时状态是 unprocessed）
     loadAll()
   } catch (e: unknown) {
     showToast('error', `${t('input.procError')}: ${e instanceof Error ? e.message : ''}`)
@@ -105,39 +104,36 @@ async function handleSubmit(content: string, type: string = 'text', voiceEmotion
   }
   submitting.value = false
 
-  // 后台执行 LLM 整理，不阻塞 UI
+  // 2. 后台整理 + 问答 并发（不互等）
   processing.value = true
-  try {
-    const procResult = await triggerProcess()
-    if (procResult.merge_candidates && procResult.merge_candidates.length > 0) {
-      mergeCandidates.value = [...mergeCandidates.value, ...procResult.merge_candidates]
-    }
-    await loadAll()
-    // 只在有实质产出时才提示，避免噪音
-    if (procResult.tasks_created || procResult.events_created || procResult.tasks_updated) {
-      const bits: string[] = []
-      if (procResult.tasks_created) bits.push(`${procResult.tasks_created} ${t('input.procTodo')}`)
-      if (procResult.tasks_updated) bits.push(`${procResult.tasks_updated} ${t('input.procUpdate')}`)
-      if (procResult.events_created) bits.push(`${procResult.events_created} ${t('input.procEvent')}`)
-      if (bits.length > 0) showToast('success', `${t('input.procDone')} ${bits.join(' · ')}`)
-    }
-  } catch (e: unknown) {
-    showToast('error', `${t('input.procError')}: ${e instanceof Error ? e.message : ''}`)
-  } finally {
-    processing.value = false
-  }
-}
-
-// ── 问答：同一输入框，走另一个 API，结果内联展示 ────────────────
-async function handleAsk(question: string, _voiceEmotion: string = '') {
-  // 问答暂不使用声学情绪（可在未来接入 answer_query prompt）
   const id = ++qaIdCounter
-  const entry: QAExchange = { id, question, loading: true }
+  const entry: QAExchange = { id, question: content, loading: true }
   qaLog.value.push(entry)
-  // 保持最近 5 条问答，避免堆积
   if (qaLog.value.length > 5) qaLog.value.splice(0, qaLog.value.length - 5)
+
+  // 整理（后台）
+  const procPromise = (async () => {
+    try {
+      const procResult = await triggerProcess()
+      if (procResult.merge_candidates?.length) {
+        mergeCandidates.value = [...mergeCandidates.value, ...procResult.merge_candidates]
+      }
+      await loadAll()
+      if (procResult.tasks_created || procResult.events_created || procResult.tasks_updated) {
+        const bits: string[] = []
+        if (procResult.tasks_created) bits.push(`${procResult.tasks_created} ${t('input.procTodo')}`)
+        if (procResult.tasks_updated) bits.push(`${procResult.tasks_updated} ${t('input.procUpdate')}`)
+        if (procResult.events_created) bits.push(`${procResult.events_created} ${t('input.procEvent')}`)
+        if (bits.length > 0) showToast('success', `${t('input.procDone')} ${bits.join(' · ')}`)
+      }
+    } catch (e: unknown) {
+      showToast('error', `${t('input.procError')}: ${e instanceof Error ? e.message : ''}`)
+    }
+  })()
+
+  // 问答（并发，不等待整理）
   try {
-    const res = await askQuestion(question)
+    const res = await askQuestion(content)
     entry.answer = res.answer
     entry.sources = res.sources
     entry.disclaimer = res.disclaimer
@@ -146,6 +142,9 @@ async function handleAsk(question: string, _voiceEmotion: string = '') {
   } finally {
     entry.loading = false
   }
+
+  await procPromise
+  processing.value = false
 }
 function dismissQA(id: number) {
   qaLog.value = qaLog.value.filter(q => q.id !== id)
@@ -347,7 +346,7 @@ onUnmounted(() => {
 
       <!-- Input -->
       <div class="relative">
-        <RecordInput @submit="handleSubmit" @ask="handleAsk" @toast="(type, msg) => showToast(type, msg)" :disabled="submitting" />
+        <RecordInput @send="handleSend" @toast="(type, msg) => showToast(type, msg)" :disabled="submitting" />
         <!-- 后台整理指示器 -->
         <Transition name="qa-fade">
           <div v-if="processing" class="absolute -top-2 right-0 flex items-center gap-1 text-[10px] text-violet-500 bg-violet-50 rounded-full px-2 py-0.5 font-medium shadow-sm">
