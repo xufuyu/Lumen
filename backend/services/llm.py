@@ -79,6 +79,50 @@ async def chat(
         return data["choices"][0]["message"]["content"] or ""
 
 
+async def chat_stream(
+    messages: list[dict[str, str]],
+    *,
+    model: str | None = None,
+    temperature: float = 0.1,
+    max_tokens: int = 2048,
+):
+    """流式发送聊天请求，逐块 yield 文本。"""
+    body: dict = dict(
+        model=model or MODEL_FLASH,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=min(max_tokens, 3000),
+        stream=True,
+    )
+
+    async with httpx.AsyncClient(timeout=60.0, verify=httpx_verify()) as client:
+        async with client.stream(
+            "POST",
+            _url("/chat/completions"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {RELAY_API_KEY}",
+                "User-Agent": "AdventureX/1.0",
+            },
+            json=body,
+        ) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    delta = chunk["choices"][0].get("delta", {})
+                    content = delta.get("content", "")
+                    if content:
+                        yield content
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue
+
+
 # ── 分类 ─────────────────────────────────────────────────────────────────────
 
 
@@ -319,17 +363,21 @@ JSON："""
 
 async def answer_query(question: str, context_json: str) -> str:
     """用用户的记录作为上下文回答自然语言问题。"""
-    prompt = f"""根据以下记录回答用户问题。如果信息不足，直接说。
+    prompt = f"""判断用户输入是否是问题，如果是则根据以下记录回答。如果不是问题（如陈述、记录、感叹），直接标记。
 
-用户问题：{question}
+用户输入：{question}
 
 上下文：
 {context_json}
 
 返回 JSON：
-{{"回答":"…","来源":[{{"记录ID":1,"摘录":"…","创建时间":"…"}}],"免责声明":null}}
+{{"是否问题":true/false,"回答":"…","来源":[{{"记录ID":1,"摘录":"…","创建时间":"…"}}],"免责声明":null}}
 
-规则：仅根据记录回答，不确定就直说。涉及健康话题加免责声明。回答简洁，≤200 字。"""
+规则：
+- 「是否问题」：用户输入是否是在询问/提问？如果只是陈述事实（如「我吃了午饭」「今天很忙」）或感叹，标记为 false
+- 如果是问题：根据记录回答，不确定就直说。回答简洁，≤200 字
+- 如果不是问题：回答字段留空字符串""
+- 涉及健康话题加免责声明"""
 
     result = await chat(
         [{"role": "user", "content": prompt}],
@@ -338,6 +386,37 @@ async def answer_query(question: str, context_json: str) -> str:
         max_tokens=512,
     )
     return result.strip()
+
+
+def _build_query_prompt(question: str, context_json: str) -> str:
+    """构建问答 prompt（流式和非流式共用）。"""
+    return f"""判断用户输入是否是问题，如果是则根据以下记录回答。如果不是问题（如陈述、记录、感叹），直接标记。
+
+用户输入：{question}
+
+上下文：
+{context_json}
+
+返回 JSON：
+{{"是否问题":true/false,"回答":"…","来源":[{{"记录ID":1,"摘录":"…","创建时间":"…"}}],"免责声明":null}}
+
+规则：
+- 「是否问题」：用户输入是否是在询问/提问？如果只是陈述事实（如「我吃了午饭」「今天很忙」）或感叹，标记为 false
+- 如果是问题：根据记录回答，不确定就直说。回答简洁，≤200 字
+- 如果不是问题：回答字段留空字符串""
+- 涉及健康话题加免责声明"""
+
+
+async def answer_query_stream(question: str, context_json: str):
+    """流式回答，逐块 yield 文本片段。"""
+    prompt = _build_query_prompt(question, context_json)
+    async for chunk in chat_stream(
+        [{"role": "user", "content": prompt}],
+        model=MODEL_FLASH,
+        temperature=0.1,
+        max_tokens=512,
+    ):
+        yield chunk
 
 
 # ── 情绪指数生成 ─────────────────────────────────────────────────────────────

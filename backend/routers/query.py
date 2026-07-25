@@ -4,13 +4,14 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import current_user_id, get_db
 from models import Event, Record, Task
 from schemas import QueryRequest, QueryResponse, QuerySource
-from services.llm import answer_query
+from services.llm import answer_query, answer_query_stream
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,61 @@ def _get(d: dict, *keys: str, default=None):
         if k in d and d[k] is not None:
             return d[k]
     return default
+
+
+@router.post("/stream")
+async def ask_question_stream(body: QueryRequest, db: AsyncSession = Depends(get_db), uid: str = Depends(current_user_id)):
+    """流式问答：SSE 逐块输出回答。"""
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="问题不能为空")
+
+    records = await _get_recent_records(db, uid, limit=20)
+    events = await _get_recent_events(db, uid, limit=10)
+    tasks = await _get_active_tasks(db, uid, limit=10)
+
+    context_parts: dict[str, list] = {
+        "records": [{"id": r["id"], "content": r["content"], "created_at": r["created_at"]} for r in records],
+        "events": events,
+        "tasks": tasks,
+    }
+    context_json = json.dumps(context_parts, ensure_ascii=False, default=str)
+
+    async def event_generator():
+        full_text = ""
+        try:
+            async for chunk in answer_query_stream(question, context_json):
+                full_text += chunk
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+
+            # 解析完整响应，提取元数据
+            try:
+                cleaned = full_text.strip()
+                if cleaned.startswith("```"):
+                    cleaned = "\n".join(cleaned.split("\n")[1:-1])
+                data = json.loads(cleaned)
+                is_question = _get(data, "是否问题", "is_question", default=True)
+                answer = _get(data, "回答", "answer", default="")
+                disclaimer = _get(data, "免责声明", "disclaimer")
+                sources = []
+                for src in _get(data, "来源", "sources", default=[]):
+                    try:
+                        sources.append({
+                            "record_id": _get(src, "记录ID", "record_id", default=0),
+                            "excerpt": _get(src, "摘录", "excerpt", default=""),
+                            "created_at": _get(src, "创建时间", "created_at", default=""),
+                        })
+                    except Exception:
+                        pass
+                yield f"data: {json.dumps({'type': 'done', 'is_question': is_question, 'answer': answer, 'sources': sources, 'disclaimer': disclaimer}, ensure_ascii=False)}\n\n"
+            except json.JSONDecodeError:
+                # LLM 未返回合法 JSON，把原始文本当作回答
+                yield f"data: {json.dumps({'type': 'done', 'is_question': True, 'answer': full_text, 'sources': [], 'disclaimer': None}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            logger.exception("流式问答失败")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.post("", response_model=QueryResponse)
@@ -82,6 +138,7 @@ async def ask_question(body: QueryRequest, db: AsyncSession = Depends(get_db), u
         answer=_get(data, "回答", "answer", default="抱歉，我无法回答这个问题。"),
         sources=sources,
         disclaimer=_get(data, "免责声明", "disclaimer"),
+        is_question=_get(data, "是否问题", "is_question", default=True),
     )
 
 

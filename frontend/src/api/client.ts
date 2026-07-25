@@ -205,6 +205,7 @@ export interface QueryResponse {
   answer: string
   sources: QuerySource[]
   disclaimer: string | null
+  is_question: boolean
 }
 
 export function askQuestion(question: string) {
@@ -212,6 +213,50 @@ export function askQuestion(question: string) {
     method: 'POST',
     body: JSON.stringify({ question }),
   })
+}
+
+// 流式问答
+export interface StreamChunk { type: 'chunk'; content: string }
+export interface StreamDone { type: 'done'; is_question: boolean; answer: string; sources: QuerySource[]; disclaimer: string | null }
+export interface StreamError { type: 'error'; message: string }
+export type StreamEvent = StreamChunk | StreamDone | StreamError
+
+export async function askQuestionStream(
+  question: string,
+  onChunk: (content: string) => void,
+  onDone: (data: StreamDone) => void,
+  onError?: (err: string) => void,
+): Promise<void> {
+  const res = await fetch(`${BASE}/query/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question }),
+  })
+  if (!res.ok) {
+    onError?.(`HTTP ${res.status}`)
+    return
+  }
+  const reader = res.body!.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const data = line.slice(6).trim()
+      if (!data) continue
+      try {
+        const evt: StreamEvent = JSON.parse(data)
+        if (evt.type === 'chunk') onChunk(evt.content)
+        else if (evt.type === 'done') onDone(evt)
+        else if (evt.type === 'error') onError?.(evt.message)
+      } catch { /* skip malformed */ }
+    }
+  }
 }
 
 // ── Process ──

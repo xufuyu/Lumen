@@ -48,11 +48,10 @@
 
 | 层 | 技术 |
 |----|------|
-| 前端 | Vue 3 + Vite + TypeScript + Tailwind CSS 4 + Font Awesome 7 |
-| 后端 | FastAPI + SQLAlchemy (async) + aiosqlite + websockets |
-| Chat AI | DeepSeek V4 Flash |
-| 语音 ASR | Qwen3-ASR Flash Realtime (OpenAI-Realtime 协议，WebSocket 双向流) |
-| 中继 | Cloudflare Worker (`advx.fzxufuyu.eu.org`) — OpenAI 兼容 + WS ASR 反代，内部代管上游 key |
+| 前端 | Vue 3 + TypeScript + Vite + Tailwind CSS 4 + Font Awesome 7 |
+| 后端 | FastAPI + SQLAlchemy (async) + aiosqlite + WebSockets |
+| AI | DeepSeek V4 Flash（对话）· Qwen3-ASR Flash Realtime（语音） |
+| 部署 | Cloudflare Worker 中继 · Nginx 反向代理 · Systemd 自启 |
 
 ## 项目结构
 

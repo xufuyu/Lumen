@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   createRecord, triggerProcess, getCurrentContext, listRecords, listTasks, listEvents,
-  generateMood, getLatestMood, deleteRecord, updateRecord, updateTask, resolveMerge, askQuestion,
+  generateMood, getLatestMood, deleteRecord, updateRecord, updateTask, resolveMerge, askQuestionStream,
   type ContextOut, type RecordOut, type TaskOut, type EventOut, type MoodOut, type MergeCandidate,
   type QueryResponse,
 } from '../api/client'
@@ -142,16 +142,46 @@ async function handleSend(content: string, type: string = 'text', voiceEmotion: 
     }
   })()
 
-  // 问答（并发，不等待整理）
+  // 问答（并发，流式输出）
   try {
-    const res = await askQuestion(content)
-    entry.answer = res.answer
-    entry.sources = res.sources
-    entry.disclaimer = res.disclaimer
+    await askQuestionStream(
+      content,
+      // onChunk: 流式追加到回答
+      (chunk) => {
+        const existing = qaLog.value.find(q => q.id === id)
+        if (existing) {
+          existing.answer = (existing.answer || '') + chunk
+        }
+      },
+      // onDone: 解析最终结果
+      (data) => {
+        const existing = qaLog.value.find(q => q.id === id)
+        if (!existing) return
+        if (data.is_question === false) {
+          // 不是问题，移除 QA 条目
+          qaLog.value = qaLog.value.filter(q => q.id !== id)
+        } else {
+          existing.answer = data.answer || existing.answer || ''
+          existing.sources = data.sources
+          existing.disclaimer = data.disclaimer
+          existing.loading = false
+        }
+      },
+      // onError
+      (err) => {
+        const existing = qaLog.value.find(q => q.id === id)
+        if (existing) {
+          existing.answer = `Error: ${err}`
+          existing.loading = false
+        }
+      },
+    )
   } catch (e: unknown) {
-    entry.answer = `Error: ${e instanceof Error ? e.message : ''}`
-  } finally {
-    entry.loading = false
+    const existing = qaLog.value.find(q => q.id === id)
+    if (existing) {
+      existing.answer = `Error: ${e instanceof Error ? e.message : ''}`
+      existing.loading = false
+    }
   }
 
   await procPromise

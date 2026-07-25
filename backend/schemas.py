@@ -188,6 +188,7 @@ class QueryResponse(BaseModel):
     answer: str
     sources: list[QuerySource]
     disclaimer: str | None = None
+    is_question: bool = True
 
 
 # ── Mood ───────────────────────────────────────────────────────────────────
