@@ -224,6 +224,7 @@ export interface ProcessResponse {
   tasks_updated: number
   context_updated: boolean
   merge_candidates: MergeCandidate[]
+  auto_completed_tasks: { task_id: number; title: string; old_status: string }[]
 }
 
 export interface MergeCandidate {

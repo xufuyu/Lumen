@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   createRecord, triggerProcess, getCurrentContext, listRecords, listTasks, listEvents,
-  generateMood, getLatestMood, deleteRecord, updateRecord, resolveMerge, askQuestion,
+  generateMood, getLatestMood, deleteRecord, updateRecord, updateTask, resolveMerge, askQuestion,
   type ContextOut, type RecordOut, type TaskOut, type EventOut, type MoodOut, type MergeCandidate,
   type QueryResponse,
 } from '../api/client'
@@ -25,7 +25,7 @@ const recordCount = ref(0)
 const taskCount = ref(0)
 const eventCount = ref(0)
 
-const toast = ref<{ type: 'success' | 'error' | 'info'; message: string; icon?: string } | null>(null)
+const toast = ref<{ type: 'success' | 'error' | 'info'; message: string; icon?: string; action?: { label: string; onClick: () => void } } | null>(null)
 const mergeCandidates = ref<MergeCandidate[]>([])
 const showStatusDetail = ref(false)
 
@@ -52,15 +52,14 @@ function dismissToast() {
   clearToastTimer()
   toast.value = null
 }
-function showToast(type: 'success' | 'error' | 'info', message: string, icon?: string) {
+function showToast(type: 'success' | 'error' | 'info', message: string, icon?: string, action?: { label: string; onClick: () => void }) {
   clearToastTimer()
-  toast.value = { type, message, icon }
-  toastTimer = setTimeout(() => { toast.value = null; toastTimer = null }, TOAST_DURATION[type])
+  toast.value = { type, message, icon, action }
+  toastTimer = setTimeout(() => { toast.value = null; toastTimer = null }, action ? 8000 : TOAST_DURATION[type])
 }
 onUnmounted(clearToastTimer)
 
 async function handleDeleteRecord(id: number) {
-  if (!confirm(t('records.delete') + '?')) return
   try { await deleteRecord(id); showToast('success', t('records.delete') + ' OK'); await loadAll() } catch (e: unknown) { showToast('error', `${t('input.procError')}: ${e instanceof Error ? e.message : ''}`) }
 }
 async function handleReprocessRecord(id: number) {
@@ -125,6 +124,18 @@ async function handleSend(content: string, type: string = 'text', voiceEmotion: 
         if (procResult.tasks_updated) bits.push(`${procResult.tasks_updated} ${t('input.procUpdate')}`)
         if (procResult.events_created) bits.push(`${procResult.events_created} ${t('input.procEvent')}`)
         if (bits.length > 0) showToast('success', `${t('input.procDone')} ${bits.join(' · ')}`)
+      }
+      // 自动完成的任务 — 显示可撤销 toast
+      if (procResult.auto_completed_tasks?.length) {
+        for (const act of procResult.auto_completed_tasks) {
+          showToast('success', `「${act.title}」${t('tasks.status.done')}`, 'fa-check', {
+            label: t('input.undo'),
+            onClick: () => updateTask(act.task_id, { status: 'pending' }).then(() => {
+              showToast('info', `「${act.title}」${t('input.undoOk')}`)
+              loadAll()
+            }),
+          })
+        }
       }
     } catch (e: unknown) {
       showToast('error', `${t('input.procError')}: ${e instanceof Error ? e.message : ''}`)
@@ -216,13 +227,19 @@ onUnmounted(() => {
           toast.type === 'success' ? 'bg-emerald-500' :
           toast.type === 'error' ? 'bg-rose-500' :
           'bg-gradient-to-r from-violet-500 to-rose-500']">
-        <span>
-          <i :class="['fa-solid mr-1.5',
-            toast.icon ? toast.icon :
-            toast.type === 'success' ? 'fa-check-circle' :
-            toast.type === 'error' ? 'fa-circle-exclamation' :
-            'fa-hand-wave']"></i>{{ toast.message }}
-        </span>
+        <div class="flex items-center justify-between gap-2">
+          <span class="flex-1 min-w-0">
+            <i :class="['fa-solid mr-1.5',
+              toast.icon ? toast.icon :
+              toast.type === 'success' ? 'fa-check-circle' :
+              toast.type === 'error' ? 'fa-circle-exclamation' :
+              'fa-hand-wave']"></i>{{ toast.message }}
+          </span>
+          <button v-if="toast.action" @click.stop="toast.action.onClick(); dismissToast()"
+            class="shrink-0 text-xs font-semibold underline underline-offset-2 opacity-90 hover:opacity-100">
+            {{ toast.action.label }}
+          </button>
+        </div>
       </div>
     </Transition>
 
@@ -303,6 +320,13 @@ onUnmounted(() => {
           <p class="text-sm text-stone-600 leading-relaxed line-clamp-3">{{ context.summary }}</p>
         </div>
       </section>
+
+    <!-- Empty state: new user, inside wrapper so input stays at bottom -->
+    <div v-if="!hasContent && !contextLoading" class="flex-1 lg:col-span-5 flex flex-col items-center justify-center py-16 text-center">
+      <i class="fa-solid fa-hand-wave text-3xl mb-3 block text-stone-200"></i>
+      <p class="text-sm text-stone-400 font-medium">{{ t('home.emptyTitle') }}</p>
+      <p class="text-xs text-stone-300 mt-1">{{ t('home.emptySub') }}</p>
+    </div>
 
     </div>
 
@@ -424,12 +448,6 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <!-- Empty state (desktop: full width) -->
-    <div v-if="!hasContent && !contextLoading" class="flex-1 lg:col-span-5 flex flex-col items-center justify-center py-16 text-center">
-      <i class="fa-solid fa-hand-wave text-3xl mb-3 block text-stone-200"></i>
-      <p class="text-sm text-stone-400 font-medium">{{ t('home.emptyTitle') }}</p>
-      <p class="text-xs text-stone-300 mt-1">{{ t('home.emptySub') }}</p>
-    </div>
 
   </div>
 

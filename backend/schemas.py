@@ -220,6 +220,7 @@ class ProcessResponse(BaseModel):
     tasks_updated: int
     context_updated: bool
     merge_candidates: list[dict] = []
+    auto_completed_tasks: list[dict] = []
 
 
 # ── Merge ───────────────────────────────────────────────────────────────────

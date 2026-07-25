@@ -61,6 +61,8 @@ export default {
     procEvent: ' events',
     procUpdate: ' tasks updated',
     procError: 'Processing failed',
+    undo: 'Undo',
+    undoOk: 'Undone',
   },
   records: {
     reprocess: 'Re-process',

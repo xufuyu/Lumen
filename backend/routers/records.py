@@ -82,8 +82,8 @@ async def list_records(
     uid: str = Depends(current_user_id),
 ):
     """List records with pagination and optional status filter."""
-    base = select(Record).where(Record.user_id == uid)
-    count_base = select(func.count(Record.id)).where(Record.user_id == uid)
+    base = select(Record).where(Record.user_id == uid, Record.status != "archived")
+    count_base = select(func.count(Record.id)).where(Record.user_id == uid, Record.status != "archived")
 
     if status:
         base = base.where(Record.status == status)

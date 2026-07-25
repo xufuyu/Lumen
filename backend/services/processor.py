@@ -131,6 +131,7 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
             "tasks_updated": 0,
             "context_updated": False,
             "merge_candidates": [],
+            "auto_completed_tasks": [],
         }
 
     # 标记为处理中
@@ -158,6 +159,7 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
     tasks_created = 0
     tasks_updated = 0
     merge_candidates: list[dict] = []  # 需要用户确认的相似任务
+    auto_completed_tasks: list[dict] = []  # 自动标记完成的任务（可撤销）
 
     try:
         # 生成时间线事件
@@ -267,11 +269,12 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
                         matched_task = all_tasks.get(normalize(matched_title))
                         if matched_task:
                             status_changed = False
-                            # 更新状态（如有变化），但不静默标记为已完成
-                            # 只有改为 in_progress 才能自动更新；改为 done 需要用户确认
-                            if matched_task.status == "pending" and task_status == "in_progress":
+                            # 允许 pending → in_progress / done 的自动更新
+                            if matched_task.status in ("pending", "in_progress") and task_status != matched_task.status:
                                 matched_task.status = task_status
                                 status_changed = True
+                                if task_status == "done":
+                                    matched_task.completed_at = _now()
                             # 链接记录
                             for rid in source_ids:
                                 if any(r.id == rid for r in unprocessed):
@@ -285,6 +288,12 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
                                         db.add(RecordTask(record_id=rid, task_id=matched_task.id))
                             if status_changed:
                                 tasks_updated += 1
+                                if task_status == "done":
+                                    auto_completed_tasks.append({
+                                        "task_id": matched_task.id,
+                                        "title": matched_task.title,
+                                        "old_status": "pending",
+                                    })
                             continue
 
                     elif match_type == "ask_user":
@@ -316,7 +325,7 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
                         continue
 
                     # new_item → 正常创建
-                    task = Task(user_id=uid, 
+                    task = Task(user_id=uid,
                         title=raw_title,
                         description=_get(t_data, "描述", "description"),
                         priority=_map_priority(_get(t_data, "优先级", "priority", default="中")),
@@ -333,6 +342,15 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
 
                     if task_status in ("pending", "in_progress"):
                         tasks_created += 1
+                    elif task_status == "done":
+                        tasks_created += 1
+                        if task.completed_at is None:
+                            task.completed_at = _now()
+                        auto_completed_tasks.append({
+                            "task_id": task.id,
+                            "title": task.title,
+                            "old_status": "new",
+                        })
 
         # 标记所有记录为已处理
         for rec in unprocessed:
@@ -364,6 +382,7 @@ async def process_records(db: AsyncSession, uid: str = "default") -> dict:
         "tasks_updated": tasks_updated,
         "context_updated": context_updated,
         "merge_candidates": merge_candidates,
+        "auto_completed_tasks": auto_completed_tasks,
     }
 
 

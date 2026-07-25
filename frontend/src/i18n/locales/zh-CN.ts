@@ -61,6 +61,8 @@ export default {
     procEvent: '个事件',
     procUpdate: '项任务更新',
     procError: '后台整理失败',
+    undo: '撤销',
+    undoOk: '已撤销',
   },
   records: {
     reprocess: '重整理',
