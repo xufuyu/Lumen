@@ -114,7 +114,6 @@ function closeWs() {
 // ── 开始录音 ──
 
 async function start() {
-  error.value = ''
   state.value = 'connecting'
 
   // 清理上一次可能残留的连接（stop 后 WebSocket 可能在等 done 响应）
