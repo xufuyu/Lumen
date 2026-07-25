@@ -24,7 +24,7 @@ export const i18n = createI18n({
 })
 
 export function setLocale(locale: string) {
-  i18n.global.locale.value = locale
+  i18n.global.locale.value = locale as 'zh-CN' | 'en'
   localStorage.setItem(STORAGE_KEY, locale)
   document.documentElement.lang = locale === 'zh-CN' ? 'zh-CN' : 'en'
 }

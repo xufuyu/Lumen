@@ -11,7 +11,6 @@ export const syncConnected = ref(false)
 
 // Polling fallback: check /api/health every 10s; any mutation on same ID
 // will be picked up next time the page reloads
-let lastRefreshVersion = 0
 
 function triggerRefresh() {
   window.dispatchEvent(new CustomEvent('lumen:refresh'))
@@ -45,7 +44,6 @@ export function connectSync() {
     try {
       const msg = JSON.parse(e.data)
       if (msg.type === 'refresh') {
-        lastRefreshVersion = Date.now()
         triggerRefresh()
       }
     } catch { /* */ }
