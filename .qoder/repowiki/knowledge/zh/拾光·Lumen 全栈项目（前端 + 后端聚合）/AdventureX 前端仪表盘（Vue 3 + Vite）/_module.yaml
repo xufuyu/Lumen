@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: frontend
-title: AdventureX 前端单页应用
+title: AdventureX 前端仪表盘（Vue 3 + Vite）
 scope:
     - frontend/
 source_files: []

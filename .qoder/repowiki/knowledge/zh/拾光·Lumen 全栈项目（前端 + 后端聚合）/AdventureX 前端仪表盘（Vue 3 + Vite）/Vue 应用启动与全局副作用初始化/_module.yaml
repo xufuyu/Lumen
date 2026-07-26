@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: frontend/app_bootstrap
-title: Vue 应用启动与全局能力初始化
+title: Vue 应用启动与全局副作用初始化
 scope:
     - frontend/src/App.vue
     - frontend/src/main.ts

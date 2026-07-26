@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-07-25T17:12:47Z"
+exported_at: "2026-07-25T20:13:37Z"
 modules:
     "":
-        dir_name: AdventureX 全栈个人时间线助手
-        title: AdventureX 全栈个人时间线助手
+        dir_name: 拾光·Lumen 全栈项目（前端 + 后端聚合）
+        title: 拾光·Lumen 全栈项目（前端 + 后端聚合）
         scope:
             - README.md
             - CONTRIBUTING.md
@@ -34,8 +34,8 @@ modules:
         related_to:
             - path: frontend/app_bootstrap
     frontend:
-        dir_name: AdventureX 前端单页应用
-        title: AdventureX 前端单页应用
+        dir_name: AdventureX 前端仪表盘（Vue 3 + Vite）
+        title: AdventureX 前端仪表盘（Vue 3 + Vite）
         scope:
             - frontend/
         source_files: []
@@ -44,8 +44,8 @@ modules:
         depends_on: []
         related_to: []
     frontend/app_bootstrap:
-        dir_name: Vue 应用启动与全局能力初始化
-        title: Vue 应用启动与全局能力初始化
+        dir_name: Vue 应用启动与全局副作用初始化
+        title: Vue 应用启动与全局副作用初始化
         scope:
             - frontend/src/App.vue
             - frontend/src/main.ts
